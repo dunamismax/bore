@@ -6,7 +6,7 @@ bore is a command-line tool for transferring files between two computers. The se
 
 bore is not a file sharing service. It is a transfer tool — ephemeral, encrypted, peer-authenticated, and zero-knowledge by design.
 
-> **Status: Phase 2 — cryptographic layer.** Noise XXpsk0 handshake with PAKE binding to rendezvous codes, SecureChannel with ChaCha20-Poly1305 AEAD, HKDF-derived PSK, counter-based nonces, and zeroized key material are implemented and tested. The transfer engine and relay service are not yet implemented. See [BUILD.md](BUILD.md) for the full execution plan.
+> **Status: Active development across all components.** The cryptographic layer (Noise XXpsk0 + ChaCha20-Poly1305) is implemented and tested. The relay server handles WebSocket-based connection brokering with room management. The NAT traversal library performs STUN probing and UDP hole-punching. The admin dashboard is scaffolded. See [BUILD.md](BUILD.md) for the full execution plan.
 
 ## Why bore?
 
@@ -56,48 +56,95 @@ bore send --relay wss://relay.example.com ./data/
 # resume an interrupted transfer
 bore receive 7-guitar-castle-moon --resume
 
-# check transfer history
-bore history
+# run your own relay server
+relay serve --port 8080
 
-# run your own relay
-bore relay --port 8080
+# probe NAT type for debugging
+punchthrough probe
+
+# monitor relay health
+bore-admin --relay http://localhost:8080
 ```
 
 This is the target experience, not the current implementation.
 
 ## Architecture
 
-bore is a multi-repo system. The Rust client handles encryption, file transfer, and the user-facing CLI. The network infrastructure — relay fallback, NAT traversal, and operations monitoring — lives in companion Go repos:
-
-- **[relay](https://github.com/dunamismax/relay)** — bore's relay server. Zero-knowledge encrypted stream broker. When direct peer-to-peer fails, bore clients connect through relay, which forwards encrypted bytes without being able to read them. Go.
-- **[punchthrough](https://github.com/dunamismax/punchthrough)** — bore's NAT traversal library. STUN-based NAT discovery and UDP hole-punching so bore clients can establish direct connections through NATs without relay fallback. Go.
-- **[bore-admin](https://github.com/dunamismax/bore-admin)** — monitoring and administration dashboard for bore's relay infrastructure. Real-time TUI and web dashboard for connection metrics, room activity, and alerting. Go.
+bore is a monorepo with a Rust client core and Go network infrastructure. The Rust side handles encryption, file transfer, and the user-facing CLI. The Go side handles relay transport, NAT traversal, and operations monitoring.
 
 ```text
-bore-core (Rust)      bore-cli (Rust)      relay (Go)          punchthrough (Go)     bore-admin (Go)
-   |                     |                    |                    |                      |
-   |  transfer model     |  operator CLI      |  relay service     |  STUN client         |  relay monitoring
-   |  session state      |  send/receive      |  room management   |  NAT classification  |  metrics dashboard
-   |  crypto layer       |  progress UI       |  zero-knowledge    |  UDP hole-punching   |  alerting
-   |  protocol codec     |  history           |  rate limiting     |  coordination        |  capacity planning
-   |  transport trait     |  config            |  deployment        |  probe cache         |  health checks
-   |                     |                    |                    |                      |
-   +--- shared protocol + encrypted stream ---+--------------------+----------------------+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              bore monorepo                                  │
+│                                                                             │
+│  ┌─────────────────────────────────────────────┐  ┌──────────────────────┐ │
+│  │            Rust — Client Core                │  │     Go — Network     │ │
+│  │                                              │  │    Infrastructure    │ │
+│  │  bore-core          bore-cli                 │  │                      │ │
+│  │  ┌─────────────┐   ┌──────────────┐         │  │  relay               │ │
+│  │  │ crypto layer │   │ send/receive │         │  │  ┌────────────────┐  │ │
+│  │  │ session mgmt │   │ progress UI  │         │  │  │ room management│  │ │
+│  │  │ protocol     │   │ history      │         │  │  │ WebSocket relay│  │ │
+│  │  │ codec/framing│   │ config       │         │  │  │ zero-knowledge │  │ │
+│  │  │ transfer     │   └──────────────┘         │  │  └────────────────┘  │ │
+│  │  │ code gen     │                            │  │                      │ │
+│  │  └─────────────┘                             │  │  punchthrough        │ │
+│  │                                              │  │  ┌────────────────┐  │ │
+│  │                                              │  │  │ STUN client    │  │ │
+│  │                                              │  │  │ NAT classify   │  │ │
+│  │                                              │  │  │ UDP hole-punch │  │ │
+│  │                                              │  │  └────────────────┘  │ │
+│  │                                              │  │                      │ │
+│  │                                              │  │  bore-admin          │ │
+│  │                                              │  │  ┌────────────────┐  │ │
+│  │                                              │  │  │ relay monitor  │  │ │
+│  │                                              │  │  │ metrics/alerts │  │ │
+│  │                                              │  │  │ TUI + web dash │  │ │
+│  │                                              │  │  └────────────────┘  │ │
+│  └─────────────────────────────────────────────┘  └──────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **`bore-core`** — the engine. Transfer model, session state machine, cryptographic layer, protocol codec, transport abstraction. Designed to be embedded by any frontend. Rust.
-- **`bore-cli`** — the operator interface. Send, receive, history, relay management. Thin shell over `bore-core`. Rust.
-- **[relay](https://github.com/dunamismax/relay)** — the fallback transport. Forwards encrypted traffic between peers that can't connect directly. Learns nothing about content. Self-hostable. Go.
-- **[punchthrough](https://github.com/dunamismax/punchthrough)** — the fast path. NAT traversal and hole-punching to make direct connections succeed. Go.
-- **[bore-admin](https://github.com/dunamismax/bore-admin)** — the operations layer. Monitors relay health, tracks connection metrics, and alerts on anomalies. Go.
+### Components
+
+| Component | Language | Location | Phase | What it does |
+|-----------|----------|----------|-------|-------------|
+| **bore-core** | Rust | `crates/bore-core/` | Phase 2 | Transfer engine, session state, cryptographic layer, protocol codec, transport abstraction. Designed to be embedded by any frontend. |
+| **bore-cli** | Rust | `crates/bore-cli/` | Phase 2 | Operator interface. Send, receive, history, relay management. Thin shell over bore-core. |
+| **relay** | Go | `services/relay/` | Phase 2 | Zero-knowledge encrypted stream broker. Pairs connections by room ID and forwards encrypted bytes. Self-hostable. |
+| **punchthrough** | Go | `lib/punchthrough/` | Phase 2 | NAT traversal library. STUN-based NAT discovery and UDP hole-punching for direct peer connections. |
+| **bore-admin** | Go | `services/bore-admin/` | Phase 0 | Monitoring and administration dashboard for relay infrastructure. TUI and web interface. |
+
+### How they connect
+
+bore-cli attempts a direct connection (via punchthrough) first. If the NAT configuration allows it, files transfer peer-to-peer with no intermediary. If hole-punching fails, bore-cli falls back to relay, which forwards encrypted bytes without being able to read them. bore-admin connects to relay's health and metrics endpoints to provide real-time monitoring.
+
+```text
+bore-cli (sender)                                         bore-cli (receiver)
+     |                                                          |
+     |  1. discover NAT type (punchthrough)                     |
+     |  2. attempt direct UDP connection                        |
+     |  ======================================================>|
+     |               direct transfer (encrypted)                |
+     |                                                          |
+     |  --- if direct fails ---                                 |
+     |                                                          |
+     |  3. connect to relay                    relay            |
+     |  ==================================>   |   <============ |
+     |     encrypted bytes (opaque to relay)   |                |
+     |  <==================================   |   ============>|
+     |                                                          |
+     |                              bore-admin                  |
+     |                              (monitors relay health)     |
+```
 
 ## Building from source
 
 ### Prerequisites
 
-- Rust 1.85+ (stable)
+- Rust 1.85+ (stable) — for bore-core and bore-cli
+- Go 1.22+ — for relay, punchthrough, and bore-admin
 
-### Build
+### Rust components
 
 ```bash
 git clone https://github.com/dunamismax/bore.git
@@ -105,54 +152,199 @@ cd bore
 cargo build --release
 ```
 
-### Current commands (Phase 2)
-
 ```bash
-cargo run -p bore-cli                # project status (default)
+# Current commands (Phase 2)
+cargo run -p bore-cli                # project status
 cargo run -p bore-cli -- status      # project status
 cargo run -p bore-cli -- components  # component map
+```
+
+### Go components
+
+```bash
+# Relay server
+cd services/relay && go build ./cmd/relay
+
+# NAT traversal library + CLI
+cd lib/punchthrough && go build ./cmd/punchthrough
+
+# Admin dashboard
+cd services/bore-admin && go build ./cmd/bore-admin
 ```
 
 ### Quality checks
 
 ```bash
+# Rust
 cargo check
 cargo test
 cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings
+
+# Go — relay
+cd services/relay && go build ./... && go test ./... && go vet ./...
+
+# Go — punchthrough
+cd lib/punchthrough && go build ./... && go test ./... && go vet ./...
+
+# Go — bore-admin
+cd services/bore-admin && go build ./... && go vet ./...
 ```
 
 ## Repository layout
 
 ```text
 .
-├── BUILD.md              # execution manual — phases, decisions, progress
-├── ARCHITECTURE.md       # technical design and protocol notes
-├── SECURITY.md           # threat model and security policy
-├── Cargo.toml            # workspace root
-├── LICENSE               # MIT
-└── crates/
-    ├── bore-core/        # shared library — transfer engine
-    │   └── src/lib.rs
-    └── bore-cli/         # binary — operator CLI
-        └── src/main.rs
+├── Cargo.toml                # Rust workspace root
+├── Cargo.lock                # Rust dependency lock
+├── BUILD.md                  # unified execution manual
+├── ARCHITECTURE.md           # technical design and protocol notes
+├── SECURITY.md               # threat model and security policy
+├── LICENSE                   # MIT
+├── crates/
+│   ├── bore-core/            # Rust — transfer engine and crypto layer
+│   │   └── src/
+│   │       ├── lib.rs        # domain types, session state, transfer model
+│   │       ├── crypto.rs     # Noise XXpsk0 handshake, SecureChannel
+│   │       ├── codec.rs      # frame encoding/decoding
+│   │       ├── code.rs       # rendezvous code generation/parsing
+│   │       ├── protocol.rs   # protocol message types
+│   │       ├── session.rs    # session state machine
+│   │       ├── transfer.rs   # transfer model
+│   │       └── error.rs      # typed error variants
+│   └── bore-cli/             # Rust — operator CLI
+│       └── src/main.rs
+├── services/
+│   ├── relay/                # Go — zero-knowledge relay server
+│   │   ├── go.mod
+│   │   ├── cmd/relay/main.go
+│   │   └── internal/
+│   │       ├── room/         # room model, registry, state machine
+│   │       └── transport/    # WebSocket handler, bidirectional relay
+│   └── bore-admin/           # Go — relay monitoring dashboard
+│       ├── go.mod
+│       └── cmd/bore-admin/main.go
+├── lib/
+│   └── punchthrough/         # Go — NAT traversal library
+│       ├── go.mod
+│       ├── cmd/punchthrough/main.go
+│       └── pkg/
+│           ├── stun/         # STUN client and NAT classification
+│           └── punch/        # UDP hole-punching engine
+└── docs/
+    ├── threat-model.md       # threat model: actors, assets, attack scenarios
+    └── crypto-design.md      # cryptographic design: Noise XX, PAKE, ChaCha20-Poly1305
 ```
 
+## Component status
+
+### bore-core and bore-cli — Phase 2 (cryptographic layer) ✓
+
+The Rust client core is through its second major phase. What exists:
+
+- **Noise XXpsk0 handshake** with PAKE binding to rendezvous codes
+- **SecureChannel** with ChaCha20-Poly1305 AEAD encryption
+- **HKDF-SHA256** PSK derivation from rendezvous codes
+- **Counter-based nonces** with replay detection
+- **Multi-segment framing** for payloads exceeding 64KB
+- **Rekey support** for long-running transfers
+- **Key material zeroization** on drop
+- **105 tests** including crypto integration tests
+- Core domain types: session state machine, protocol messages, frame codec, rendezvous codes
+
+What's next: transfer engine (Phase 3), then rendezvous and code exchange (Phase 4).
+
+### relay — Phase 2 (WebSocket transport) ✓
+
+The relay server handles the core job: pair two connections by room ID and forward encrypted bytes between them. What exists:
+
+- **Room model** with state machine (Waiting → Active → Closed)
+- **In-memory registry** with TTL reaper for expired rooms
+- **WebSocket transport** with bidirectional frame relay
+- **Streaming back-pressure** via `io.Copy` between Reader/Writer pairs
+- **Clean close propagation** between peers
+- **32 tests** (21 room model + 11 transport integration)
+
+What's next: rate limiting (Phase 3), configuration and deployment (Phase 4).
+
+### punchthrough — Phase 2 (UDP hole-punching engine) ✓
+
+The NAT traversal library handles direct connection establishment. What exists:
+
+- **STUN client** with NAT type classification via `pion/stun` v3
+- **NAT type detection**: Full Cone, Restricted Cone, Port-Restricted Cone, Symmetric
+- **UDP hole-punching engine** with simultaneous open strategy
+- **24-byte binary punch protocol** with ping/pong/ack handshake
+- **Strategy selection** based on both peers' NAT types
+- **CLI** with `probe` and `version` commands
+
+What's next: coordination protocol (Phase 3), library API polish (Phase 4).
+
+### bore-admin — Phase 0 (scaffold) ✓
+
+The monitoring dashboard is in its earliest stage. What exists:
+
+- Project scaffold with Go module and entry point
+- Planned architecture for relay health polling, SQLite metrics storage, TUI dashboard, web dashboard, and configurable alerting
+
+What's next: relay health polling and SQLite storage (Phase 1).
+
 ## Roadmap
+
+### Rust client (bore-core / bore-cli)
 
 | Phase | Name | Status |
 |-------|------|--------|
 | 0 | Truthful scaffold | **Done** |
-| 1 | Protocol design and type foundations | Planned |
-| 2 | Cryptographic layer | Planned |
+| 1 | Protocol design and type foundations | **Done** |
+| 2 | Cryptographic layer | **Done** |
 | 3 | Local transfer engine | Planned |
 | 4 | Rendezvous and code exchange | Planned |
 | 5 | Direct peer-to-peer transport | Planned |
-| 6 | Relay service | Planned |
+| 6 | Relay service integration | Planned |
 | 7 | Resumable transfers and persistence | Planned |
 | 8 | Hardening and security audit | Planned |
 | 9 | Cross-platform polish and distribution | Planned |
 | 10 | Ecosystem — library bindings, GUI, integrations | Planned |
+
+### Relay server
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 0 | Truthful scaffold | **Done** |
+| 1 | Room model and connection lifecycle | **Done** |
+| 2 | WebSocket transport | **Done** |
+| 3 | Rate limiting and resource management | Planned |
+| 4 | Configuration and deployment | Planned |
+| 5 | Observability | Planned |
+| 6 | Integration testing with bore | Planned |
+| 7 | Hardening | Planned |
+
+### Punchthrough (NAT traversal)
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 0 | Truthful scaffold | **Done** |
+| 1 | STUN client and NAT discovery | **Done** |
+| 2 | UDP hole-punching engine | **Done** |
+| 3 | Coordination protocol | Planned |
+| 4 | Library API | Planned |
+| 5 | CLI wrapper | Planned |
+| 6 | SQLite probe cache | Planned |
+| 7 | Hardening and real-world testing | Planned |
+
+### bore-admin (monitoring)
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 0 | Truthful scaffold | **Done** |
+| 1 | Relay health polling and SQLite storage | Planned |
+| 2 | Terminal UI dashboard | Planned |
+| 3 | Alerting engine | Planned |
+| 4 | Web dashboard | Planned |
+| 5 | Multi-instance support | Planned |
+| 6 | Configuration and deployment | Planned |
+| 7 | Hardening and real-world testing | Planned |
 
 See [BUILD.md](BUILD.md) for the full phase breakdown with tasks, exit criteria, and decisions.
 
@@ -163,14 +355,25 @@ See [BUILD.md](BUILD.md) for the full phase breakdown with tasks, exit criteria,
 3. **Direct first.** Attempt peer-to-peer before relay. LAN transfers should be fast and never touch the internet.
 4. **Operator control.** The user decides what relay to use, what to trust, and what to persist. No hidden magic.
 5. **Composable core.** `bore-core` is a library. The CLI is one consumer. Others should be possible.
+6. **Dumb pipe relay.** The relay forwards bytes. It doesn't parse them, validate them, transform them, or store them. Complexity belongs in the client.
+7. **Fail fast, fall back clean.** If hole-punching can't work for a given NAT configuration, detect that quickly and report clearly.
+8. **Honest scope.** Never describe future work as present capability.
 
 ## Security
 
-bore makes no security claims today. The cryptographic protocol, threat model, and relay trust boundaries are being designed. See [SECURITY.md](SECURITY.md) for the planned security posture and responsible disclosure policy.
+bore's Noise XXpsk0 handshake with PAKE binding to rendezvous codes and ChaCha20-Poly1305 AEAD encryption is implemented and tested. The relay is zero-knowledge by design — it forwards encrypted bytes without being able to decrypt them.
+
+bore makes no security claims beyond what has been implemented and tested. See [SECURITY.md](SECURITY.md) for the full threat model, security posture, and responsible disclosure policy. See [docs/crypto-design.md](docs/crypto-design.md) for the cryptographic protocol design.
 
 ## Contributing
 
-bore is in early design. Contributions are welcome once the protocol and type foundations stabilize (Phase 1+). In the meantime, design feedback and threat model review are valuable — open an issue.
+bore is in active development across all components. Contributions are welcome — especially:
+
+- **Protocol and security review** for the cryptographic layer
+- **NAT traversal testing** across different network configurations
+- **Relay load testing** for concurrent connection scenarios
+
+Open an issue to start a conversation.
 
 ## License
 
