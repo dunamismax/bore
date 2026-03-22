@@ -67,27 +67,29 @@ This is the target experience, not the current implementation.
 
 ## Architecture
 
-bore is a multi-repo system. The Rust client handles encryption, file transfer, and the user-facing CLI. The network infrastructure — relay fallback and NAT traversal — lives in two companion Go repos:
+bore is a multi-repo system. The Rust client handles encryption, file transfer, and the user-facing CLI. The network infrastructure — relay fallback, NAT traversal, and operations monitoring — lives in companion Go repos:
 
 - **[relay](https://github.com/dunamismax/relay)** — bore's relay server. Zero-knowledge encrypted stream broker. When direct peer-to-peer fails, bore clients connect through relay, which forwards encrypted bytes without being able to read them. Go.
 - **[punchthrough](https://github.com/dunamismax/punchthrough)** — bore's NAT traversal library. STUN-based NAT discovery and UDP hole-punching so bore clients can establish direct connections through NATs without relay fallback. Go.
+- **[bore-admin](https://github.com/dunamismax/bore-admin)** — monitoring and administration dashboard for bore's relay infrastructure. Real-time TUI and web dashboard for connection metrics, room activity, and alerting. Go.
 
 ```text
-bore-core (Rust)      bore-cli (Rust)      relay (Go)          punchthrough (Go)
-   |                     |                    |                    |
-   |  transfer model     |  operator CLI      |  relay service     |  STUN client
-   |  session state      |  send/receive      |  room management   |  NAT classification
-   |  crypto layer       |  progress UI       |  zero-knowledge    |  UDP hole-punching
-   |  protocol codec     |  history           |  rate limiting     |  coordination
-   |  transport trait     |  config            |  deployment        |  probe cache
-   |                     |                    |                    |
-   +--- shared protocol + encrypted stream ---+--------------------+
+bore-core (Rust)      bore-cli (Rust)      relay (Go)          punchthrough (Go)     bore-admin (Go)
+   |                     |                    |                    |                      |
+   |  transfer model     |  operator CLI      |  relay service     |  STUN client         |  relay monitoring
+   |  session state      |  send/receive      |  room management   |  NAT classification  |  metrics dashboard
+   |  crypto layer       |  progress UI       |  zero-knowledge    |  UDP hole-punching   |  alerting
+   |  protocol codec     |  history           |  rate limiting     |  coordination        |  capacity planning
+   |  transport trait     |  config            |  deployment        |  probe cache         |  health checks
+   |                     |                    |                    |                      |
+   +--- shared protocol + encrypted stream ---+--------------------+----------------------+
 ```
 
 - **`bore-core`** — the engine. Transfer model, session state machine, cryptographic layer, protocol codec, transport abstraction. Designed to be embedded by any frontend. Rust.
 - **`bore-cli`** — the operator interface. Send, receive, history, relay management. Thin shell over `bore-core`. Rust.
 - **[relay](https://github.com/dunamismax/relay)** — the fallback transport. Forwards encrypted traffic between peers that can't connect directly. Learns nothing about content. Self-hostable. Go.
 - **[punchthrough](https://github.com/dunamismax/punchthrough)** — the fast path. NAT traversal and hole-punching to make direct connections succeed. Go.
+- **[bore-admin](https://github.com/dunamismax/bore-admin)** — the operations layer. Monitors relay health, tracks connection metrics, and alerts on anomalies. Go.
 
 ## Building from source
 
