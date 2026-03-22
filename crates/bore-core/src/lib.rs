@@ -7,16 +7,16 @@
 //!
 //! # Current state
 //!
-//! Phase 2: cryptographic layer. Noise XXpsk0 handshake with PAKE binding to
-//! rendezvous codes, SecureChannel with ChaCha20-Poly1305 AEAD encryption,
-//! counter-based nonces, and zeroized key material. Core domain types with
-//! serde serialization, exhaustive state machine tests, protocol message types,
-//! frame codec, and rendezvous code system are all in place. The transfer
-//! engine and transport abstraction are not yet implemented.
+//! Phase 3: transfer engine. Builds on Phase 2's Noise XXpsk0 handshake with
+//! PAKE binding to rendezvous codes, SecureChannel with ChaCha20-Poly1305 AEAD
+//! encryption, counter-based nonces, and zeroized key material. The transfer
+//! engine (chunking, streaming, SHA-256 integrity verification) is implemented
+//! and tested. Transport abstraction is not yet implemented.
 
 pub mod code;
 pub mod codec;
 pub mod crypto;
+pub mod engine;
 pub mod error;
 pub mod protocol;
 pub mod session;
@@ -30,10 +30,10 @@ pub mod transfer;
 pub const PROJECT_NAME: &str = "bore";
 
 /// Current development phase.
-pub const CURRENT_PHASE: &str = "phase-2";
+pub const CURRENT_PHASE: &str = "phase-3";
 
 /// Human-readable status for the repository today.
-pub const CURRENT_STATUS: &str = "Cryptographic layer implemented. Noise XXpsk0 handshake, SecureChannel with ChaCha20-Poly1305, HKDF-derived PSK from rendezvous codes. Transfer engine is not yet implemented.";
+pub const CURRENT_STATUS: &str = "Transfer engine implemented. File chunking, SHA-256 integrity verification, encrypted streaming over SecureChannel. Built on Noise XXpsk0 handshake with ChaCha20-Poly1305 AEAD and HKDF-derived PSK.";
 
 /// Short statement of intent.
 pub const MISSION: &str = "Privacy-first file transfer with human-friendly rendezvous, end-to-end encryption, and zero-knowledge relay.";
@@ -58,9 +58,7 @@ impl PlannedComponent {
     pub const fn current_state(self) -> &'static str {
         match self {
             Self::Cli => "scaffold — prints project status, tracing subscriber setup",
-            Self::Core => {
-                "phase-2 — crypto layer, Noise XXpsk0 handshake, SecureChannel, domain types"
-            }
+            Self::Core => "phase-3 — transfer engine, chunking, SHA-256 integrity, crypto layer",
             Self::Relay => "planned — not started",
         }
     }
@@ -143,7 +141,7 @@ mod tests {
     fn snapshot_is_truthful() {
         let snap = project_snapshot();
         assert_eq!(snap.name, "bore");
-        assert_eq!(snap.phase, "phase-2");
+        assert_eq!(snap.phase, "phase-3");
         assert!(!snap.explicitly_not_implemented.is_empty());
         assert!(!snap.next_focus.is_empty());
     }
