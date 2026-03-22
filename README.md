@@ -6,7 +6,7 @@ bore is a command-line tool for transferring files between two computers. The se
 
 bore is not a file sharing service. It is a transfer tool — ephemeral, encrypted, peer-authenticated, and zero-knowledge by design.
 
-> **Status: Active development across all components.** The transfer engine (chunking, streaming, SHA-256 integrity verification over encrypted SecureChannel) is implemented and tested. Built on the Noise XXpsk0 + ChaCha20-Poly1305 cryptographic layer. The relay server handles WebSocket-based connection brokering with room management. The NAT traversal library performs STUN probing and UDP hole-punching. The admin dashboard is scaffolded. See [BUILD.md](BUILD.md) for the full execution plan.
+> **Status: bore works over the network.** The Rust client connects to the Go relay server over WebSocket, performs a Noise XXpsk0 handshake, and transfers encrypted files end-to-end. The CLI has working `send` and `receive` commands. The relay server handles WebSocket-based connection brokering with room management. The NAT traversal library performs STUN probing and UDP hole-punching. See [BUILD.md](BUILD.md) for the full execution plan.
 
 ## Why bore?
 
@@ -108,8 +108,8 @@ bore is a monorepo with a Rust client core and Go network infrastructure. The Ru
 
 | Component | Language | Location | Phase | What it does |
 |-----------|----------|----------|-------|-------------|
-| **bore-core** | Rust | `crates/bore-core/` | Phase 3 | Transfer engine, session state, cryptographic layer, protocol codec, transport abstraction. Designed to be embedded by any frontend. |
-| **bore-cli** | Rust | `crates/bore-cli/` | Phase 2 | Operator interface. Send, receive, history, relay management. Thin shell over bore-core. |
+| **bore-core** | Rust | `crates/bore-core/` | Phase 4 | Transfer engine, session state, cryptographic layer, protocol codec, transport abstraction, relay integration. Designed to be embedded by any frontend. |
+| **bore-cli** | Rust | `crates/bore-cli/` | Phase 4 | Operator interface with working send/receive commands. Thin shell over bore-core. |
 | **relay** | Go | `services/relay/` | Phase 2 | Zero-knowledge encrypted stream broker. Pairs connections by room ID and forwards encrypted bytes. Self-hostable. |
 | **punchthrough** | Go | `lib/punchthrough/` | Phase 2 | NAT traversal library. STUN-based NAT discovery and UDP hole-punching for direct peer connections. |
 | **bore-admin** | Go | `services/bore-admin/` | Phase 0 | Monitoring and administration dashboard for relay infrastructure. TUI and web interface. |
@@ -153,10 +153,15 @@ cargo build --release
 ```
 
 ```bash
-# Current commands (Phase 2)
+# Project info
 cargo run -p bore-cli                # project status
 cargo run -p bore-cli -- status      # project status
 cargo run -p bore-cli -- components  # component map
+
+# File transfer (requires relay running: cd services/relay && go run ./cmd/relay)
+cargo run -p bore-cli -- send report.pdf                         # send a file
+cargo run -p bore-cli -- receive <code>                          # receive using code
+cargo run -p bore-cli -- send --relay http://relay.example.com report.pdf  # custom relay
 ```
 
 ### Go components
@@ -202,11 +207,13 @@ cd services/bore-admin && go build ./... && go vet ./...
 ├── SECURITY.md               # threat model and security policy
 ├── LICENSE                   # MIT
 ├── crates/
-│   ├── bore-core/            # Rust — transfer engine and crypto layer
+│   ├── bore-core/            # Rust — transfer engine, crypto, and transport
 │   │   └── src/
 │   │       ├── lib.rs        # domain types, session state, transfer model
 │   │       ├── crypto.rs     # Noise XXpsk0 handshake, SecureChannel
 │   │       ├── engine.rs     # transfer engine: chunking, streaming, SHA-256
+│   │       ├── transport.rs  # Transport trait, WebSocket and duplex adapters
+│   │       ├── rendezvous.rs # rendezvous coordination: code ↔ relay mapping
 │   │       ├── codec.rs      # frame encoding/decoding
 │   │       ├── code.rs       # rendezvous code generation/parsing
 │   │       ├── protocol.rs   # protocol message types
@@ -239,10 +246,14 @@ cd services/bore-admin && go build ./... && go vet ./...
 
 ## Component status
 
-### bore-core — Phase 3 (transfer engine) ✓ / bore-cli — Phase 2 ✓
+### bore-core — Phase 4 (network transport) ✓ / bore-cli — Phase 4 ✓
 
-The Rust client core is through its third major phase. What exists:
+The Rust client core is through its fourth major phase. What exists:
 
+- **Working send/receive** over the Go relay server via WebSocket
+- **Transport trait** abstracting WebSocket, TCP, and in-process streams
+- **WebSocket client transport** connecting to the relay via `tokio-tungstenite`
+- **Rendezvous coordination** mapping codes to relay room IDs and PAKE secrets
 - **Transfer engine** with chunking (256 KiB default), streaming over SecureChannel, SHA-256 integrity verification
 - **Binary wire format** for header/chunk/end messages with type tags and big-endian encoding
 - **Filename validation** against path traversal, null bytes, relative components, and length limits
@@ -253,10 +264,10 @@ The Rust client core is through its third major phase. What exists:
 - **Multi-segment framing** for payloads exceeding 64KB
 - **Rekey support** for long-running transfers
 - **Key material zeroization** on drop
-- **159 tests** including transfer integration, error-path, and crypto tests
+- **180 tests** including transport, rendezvous, transfer integration, error-path, and crypto tests
 - Core domain types: session state machine, protocol messages, frame codec, rendezvous codes
 
-What's next: rendezvous and code exchange (Phase 4), then direct peer-to-peer transport (Phase 5).
+What's next: direct peer-to-peer transport (Phase 5), then relay hardening (Phase 6).
 
 ### relay — Phase 2 (WebSocket transport) ✓
 
@@ -303,9 +314,9 @@ What's next: relay health polling and SQLite storage (Phase 1).
 | 1 | Protocol design and type foundations | **Done** |
 | 2 | Cryptographic layer | **Done** |
 | 3 | Local transfer engine | **Done** |
-| 4 | Rendezvous and code exchange | Planned |
+| 4 | Rendezvous and network transport | **Done** |
 | 5 | Direct peer-to-peer transport | Planned |
-| 6 | Relay service integration | Planned |
+| 6 | Relay service hardening | Planned |
 | 7 | Resumable transfers and persistence | Planned |
 | 8 | Hardening and security audit | Planned |
 | 9 | Cross-platform polish and distribution | Planned |

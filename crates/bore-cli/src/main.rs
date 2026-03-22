@@ -1,8 +1,12 @@
-use anyhow::Result;
+use std::path::Path;
+
+use anyhow::{Context, Result};
+use bore_core::rendezvous;
 use bore_core::{ALL_COMPONENTS, project_snapshot};
 use clap::{Parser, Subcommand};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
+use url::Url;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -11,9 +15,7 @@ use tracing_subscriber::EnvFilter;
     about = "Privacy-first file transfer. No accounts, no cloud, no trust required.",
     long_about = "bore transfers files between two machines using short, human-readable codes.\n\n\
         End-to-end encrypted. Direct when possible, relayed when necessary.\n\
-        The relay learns nothing about your files.\n\n\
-        Currently in Phase 1 — protocol design and type foundations.\n\
-        The transfer engine is not yet implemented."
+        The relay learns nothing about your files."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -32,17 +34,15 @@ enum Command {
     /// Print the planned component map for the workspace.
     Components,
 
-    // ------------------------------------------------------------------
-    // Future commands (not yet implemented, listed for design reference)
-    // ------------------------------------------------------------------
-    /// Send files or directories to a receiver.
+    /// Send a file to a receiver.
     ///
-    /// Generates a short code for the receiver to use.
-    #[command(hide = true)]
+    /// Generates a short code for the receiver to use. The transfer is
+    /// end-to-end encrypted through the relay — the relay cannot read
+    /// your files.
     Send {
-        /// Path to the file or directory to send.
+        /// Path to the file to send.
         path: String,
-        /// Relay server URL (default: built-in public relay).
+        /// Relay server URL (default: localhost:8080).
         #[arg(long)]
         relay: Option<String>,
         /// Number of code words (2-5, default: 3).
@@ -50,17 +50,19 @@ enum Command {
         words: u8,
     },
 
-    /// Receive files using a code from the sender.
-    #[command(hide = true)]
+    /// Receive a file using a code from the sender.
+    ///
+    /// The transfer is end-to-end encrypted — the relay cannot read the
+    /// file contents.
     Receive {
         /// The code provided by the sender.
         code: String,
         /// Output directory (default: current directory).
         #[arg(short, long)]
         output: Option<String>,
-        /// Resume an interrupted transfer.
+        /// Relay server URL (default: localhost:8080).
         #[arg(long)]
-        resume: bool,
+        relay: Option<String>,
     },
 
     /// Show transfer history.
@@ -80,7 +82,6 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Initialize tracing subscriber.
-    // Use BORE_LOG env var for filter, defaulting to "warn" (or "info" with --verbose).
     let default_filter = if cli.verbose { "info" } else { "warn" };
     let filter =
         EnvFilter::try_from_env("BORE_LOG").unwrap_or_else(|_| EnvFilter::new(default_filter));
@@ -95,27 +96,120 @@ fn main() -> Result<()> {
     match cli.command.unwrap_or(Command::Status) {
         Command::Status => print_status(),
         Command::Components => print_components(),
-        Command::Send { .. } => {
-            eprintln!("bore send is not yet implemented (planned for Phase 3-4)");
-            eprintln!("run `bore status` to see current project state");
-            std::process::exit(1);
+        Command::Send { path, relay, words } => {
+            let rt = tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
+            rt.block_on(cmd_send(&path, relay.as_deref(), words))?;
         }
-        Command::Receive { .. } => {
-            eprintln!("bore receive is not yet implemented (planned for Phase 3-4)");
-            eprintln!("run `bore status` to see current project state");
-            std::process::exit(1);
+        Command::Receive {
+            code,
+            output,
+            relay,
+        } => {
+            let rt = tokio::runtime::Runtime::new().context("failed to create tokio runtime")?;
+            rt.block_on(cmd_receive(&code, output.as_deref(), relay.as_deref()))?;
         }
         Command::History => {
             eprintln!("bore history is not yet implemented (planned for Phase 7)");
             std::process::exit(1);
         }
         Command::Relay { .. } => {
-            eprintln!("bore relay is not yet implemented (planned for Phase 6)");
+            eprintln!("bore relay is not yet implemented — use the Go relay server");
+            eprintln!("  cd services/relay && go run ./cmd/relay");
             std::process::exit(1);
         }
     }
 
     Ok(())
+}
+
+async fn cmd_send(path: &str, relay: Option<&str>, words: u8) -> Result<()> {
+    let relay_url = parse_relay_url(relay)?;
+    let file_path = Path::new(path);
+
+    if !file_path.exists() {
+        anyhow::bail!("file not found: {}", path);
+    }
+
+    if !file_path.is_file() {
+        anyhow::bail!(
+            "not a file (directory transfer not yet supported): {}",
+            path
+        );
+    }
+
+    let filename = file_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .context("could not extract filename")?;
+
+    let data =
+        std::fs::read(file_path).with_context(|| format!("failed to read file: {}", path))?;
+
+    eprintln!("bore send — {filename} ({} bytes)", data.len());
+    eprintln!();
+
+    let result = rendezvous::send_with_code_callback(&relay_url, filename, &data, words, |code| {
+        eprintln!("Code: {}", code.code_string());
+        if relay.is_some() {
+            eprintln!("Relay: {}", code.relay_url);
+        }
+        eprintln!();
+        eprintln!("Waiting for receiver...");
+    })
+    .await
+    .context("transfer failed")?;
+
+    eprintln!();
+    eprintln!(
+        "Sent: {} ({} bytes, {} chunks)",
+        result.transfer.filename, result.transfer.size, result.transfer.chunks_sent
+    );
+    let hex: String = result
+        .transfer
+        .sha256
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    eprintln!("SHA-256: {hex}");
+
+    Ok(())
+}
+
+async fn cmd_receive(code: &str, output: Option<&str>, relay: Option<&str>) -> Result<()> {
+    let relay_url = parse_relay_url(relay)?;
+
+    eprintln!("bore receive — connecting...");
+    eprintln!();
+
+    let result = rendezvous::receive(code, &relay_url)
+        .await
+        .context("transfer failed")?;
+
+    let out_dir = output.unwrap_or(".");
+    let out_path = Path::new(out_dir).join(&result.transfer.filename);
+
+    std::fs::write(&out_path, &result.transfer.data)
+        .with_context(|| format!("failed to write file: {}", out_path.display()))?;
+
+    eprintln!(
+        "Received: {} ({} bytes, {} chunks)",
+        result.transfer.filename, result.transfer.size, result.transfer.chunks_received
+    );
+    let hex: String = result
+        .transfer
+        .sha256
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    eprintln!("SHA-256: {hex}");
+    eprintln!("Saved to: {}", out_path.display());
+
+    Ok(())
+}
+
+fn parse_relay_url(relay: Option<&str>) -> Result<Url> {
+    let url_str = relay.unwrap_or(rendezvous::DEFAULT_RELAY_URL);
+    Url::parse(url_str).with_context(|| format!("invalid relay URL: {url_str}"))
 }
 
 fn print_status() {

@@ -1,17 +1,15 @@
 //! Core library for `bore` — a privacy-first file transfer tool.
 //!
 //! This crate owns the transfer model, session state, protocol types, codec,
-//! rendezvous code system, and domain logic. It is designed to be embedded by
-//! any frontend (CLI, GUI, FFI) and contains no IO or platform-specific code
-//! in its public API.
+//! rendezvous code system, transport abstraction, and domain logic. It is
+//! designed to be embedded by any frontend (CLI, GUI, FFI).
 //!
 //! # Current state
 //!
-//! Phase 3: transfer engine. Builds on Phase 2's Noise XXpsk0 handshake with
-//! PAKE binding to rendezvous codes, SecureChannel with ChaCha20-Poly1305 AEAD
-//! encryption, counter-based nonces, and zeroized key material. The transfer
-//! engine (chunking, streaming, SHA-256 integrity verification) is implemented
-//! and tested. Transport abstraction is not yet implemented.
+//! Phase 4: rendezvous and network transport. Builds on Phase 3's transfer
+//! engine with WebSocket transport to the Go relay server, full sender/receiver
+//! flows with rendezvous code coordination, and the Transport trait that
+//! abstracts over WebSocket and in-process test streams.
 
 pub mod code;
 pub mod codec;
@@ -19,8 +17,10 @@ pub mod crypto;
 pub mod engine;
 pub mod error;
 pub mod protocol;
+pub mod rendezvous;
 pub mod session;
 pub mod transfer;
+pub mod transport;
 
 // ---------------------------------------------------------------------------
 // Project metadata — truthful snapshot of the repo's current state.
@@ -30,10 +30,10 @@ pub mod transfer;
 pub const PROJECT_NAME: &str = "bore";
 
 /// Current development phase.
-pub const CURRENT_PHASE: &str = "phase-3";
+pub const CURRENT_PHASE: &str = "phase-4";
 
 /// Human-readable status for the repository today.
-pub const CURRENT_STATUS: &str = "Transfer engine implemented. File chunking, SHA-256 integrity verification, encrypted streaming over SecureChannel. Built on Noise XXpsk0 handshake with ChaCha20-Poly1305 AEAD and HKDF-derived PSK.";
+pub const CURRENT_STATUS: &str = "Network transport implemented. WebSocket client connects to Go relay server. Full sender/receiver flows with rendezvous code coordination, Noise XXpsk0 handshake, and encrypted file transfer over relay.";
 
 /// Short statement of intent.
 pub const MISSION: &str = "Privacy-first file transfer with human-friendly rendezvous, end-to-end encryption, and zero-knowledge relay.";
@@ -57,16 +57,18 @@ impl PlannedComponent {
 
     pub const fn current_state(self) -> &'static str {
         match self {
-            Self::Cli => "scaffold — prints project status, tracing subscriber setup",
-            Self::Core => "phase-3 — transfer engine, chunking, SHA-256 integrity, crypto layer",
-            Self::Relay => "go relay exists — Rust client integration not started",
+            Self::Cli => "phase-4 — working send/receive commands over relay",
+            Self::Core => "phase-4 — transport layer, rendezvous coordination, relay integration",
+            Self::Relay => "go relay phase 2 — WebSocket transport with room model",
         }
     }
 
     pub const fn description(self) -> &'static str {
         match self {
             Self::Cli => "Operator-facing CLI: send, receive, history, relay management",
-            Self::Core => "Shared library: transfer model, session state, crypto, protocol codec",
+            Self::Core => {
+                "Shared library: transfer model, session state, crypto, protocol codec, transport"
+            }
             Self::Relay => "Optional relay server: encrypted traffic forwarding, zero-knowledge",
         }
     }
@@ -115,22 +117,27 @@ pub fn project_snapshot() -> ProjectSnapshot {
             "Transfer engine with chunking, streaming, SHA-256 integrity verification",
             "Binary wire format for header/chunk/end messages over SecureChannel",
             "Filename validation (path traversal, null bytes, relative components)",
+            "Transport trait abstracting WebSocket, TCP, and in-process streams",
+            "WebSocket client transport connecting to Go relay server",
+            "Rendezvous code coordination (relay URL + room ID + PAKE code)",
+            "Full sender flow: connect to relay → generate code → handshake → transfer",
+            "Full receiver flow: parse code → connect to relay → handshake → receive",
+            "Working CLI send/receive commands over relay",
+            "DuplexTransport for in-process testing",
             "Typed error hierarchy using thiserror",
             "Structured tracing subscriber in CLI",
             "Threat model and crypto design documents",
-            "CLI with planned command structure",
         ],
         explicitly_not_implemented: &[
             "Direct peer-to-peer transport (TCP, QUIC, hole-punching)",
-            "Relay protocol integration from Rust client",
-            "Rendezvous code exchange over network",
             "Resumable session state persistence",
             "NAT traversal integration (STUN/TURN, ICE-lite)",
+            "Progress reporting callbacks during transfer",
         ],
         next_focus: &[
-            "Phase 4: rendezvous and code exchange over network",
             "Phase 5: direct peer-to-peer transport",
-            "Phase 6: relay service integration from Rust client",
+            "Phase 6: relay service hardening",
+            "Phase 7: resumable transfers and persistence",
         ],
     }
 }
@@ -143,7 +150,7 @@ mod tests {
     fn snapshot_is_truthful() {
         let snap = project_snapshot();
         assert_eq!(snap.name, "bore");
-        assert_eq!(snap.phase, "phase-3");
+        assert_eq!(snap.phase, "phase-4");
         assert!(!snap.explicitly_not_implemented.is_empty());
         assert!(!snap.next_focus.is_empty());
     }

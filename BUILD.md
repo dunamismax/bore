@@ -56,11 +56,11 @@ Each Go component has its own `go.mod` for independent dependency management:
 
 ### bore-core / bore-cli (Rust)
 
-**Current phase: Phase 3 — transfer engine (done)**
+**Current phase: Phase 4 — rendezvous and network transport (done)**
 
 What exists:
 - Rust workspace with `bore-core` and `bore-cli`
-- CLI prints truthful project status and component state
+- CLI with working `send` and `receive` commands over relay
 - Core domain types with serde serialization: session, transfer, protocol, error, code
 - Frame codec for wire-format encoding/decoding
 - Rendezvous code module with 256-word curated wordlist and entropy budget
@@ -72,15 +72,21 @@ What exists:
 - Transfer engine: chunking (256 KiB default), streaming over SecureChannel, SHA-256 integrity verification
 - Binary wire format for header/chunk/end messages (type-tagged, big-endian)
 - Filename validation: path traversal, null bytes, relative components, length limits
-- 159 total tests including transfer engine integration and error-path tests
+- Transport trait abstracting WebSocket, TCP, and in-process streams
+- WebSocket client transport connecting to Go relay server (via `tokio-tungstenite`)
+- `WsReader`/`WsWriter` adapters bridging WebSocket frames to `AsyncRead`/`AsyncWrite`
+- Rendezvous coordination: full code format (`room_id-channel-word-word-word`)
+- Full sender flow: connect to relay → receive room ID → generate PAKE code → display code → handshake → transfer
+- Full receiver flow: parse code → extract room ID + PAKE → connect to relay → handshake → receive
+- `DuplexTransport` for in-process testing via the `Transport` trait
+- 180 total tests including transport, rendezvous, and integration tests
 - Design docs: threat model, crypto design
 
 What does **not** exist yet:
-- Direct peer-to-peer transport
-- Relay protocol integration from Rust client
-- Rendezvous code exchange over network
+- Direct peer-to-peer transport (TCP, QUIC, hole-punching)
 - Resumable session state persistence
-- NAT traversal integration
+- NAT traversal integration (STUN/TURN, ICE-lite)
+- Progress reporting callbacks during transfer
 
 ### relay (Go)
 
@@ -229,11 +235,14 @@ go vet ./...
 
 | Crate | Purpose | Phase |
 |-------|---------|-------|
+| `tokio-tungstenite` | WebSocket client for relay connection | 4 |
+| `futures-util` | Stream/Sink traits for WebSocket adapter | 4 |
+| `url` | URL parsing for relay URLs | 4 |
 | `snow` | Noise Protocol XXpsk0 handshake + ChaCha20-Poly1305 transport | 2 |
 | `hkdf` + `sha2` | HKDF-SHA256 PSK derivation; SHA-256 transfer integrity | 2, 3 |
 | `zeroize` | Key material cleanup on drop | 2 |
 | `rand` | CSPRNG for keypair generation | 2 |
-| `tokio` | Async runtime for handshake IO | 2 |
+| `tokio` | Async runtime for handshake IO and networking | 2 |
 | `serde` + `serde_json` | Serialization for protocol messages | 1 |
 | `tracing` + `tracing-subscriber` | Structured observability | 1 |
 | `thiserror` | Typed errors in core | 1 |
@@ -252,11 +261,11 @@ go vet ./...
 
 ## Immediate next moves
 
-### bore-core — Phase 4: rendezvous and code exchange
-1. Rendezvous code exchange over network transport
-2. Peer discovery and connection coordination
-3. Integration with relay for code-based matchmaking
-4. Session lifecycle: code generation → exchange → handshake → transfer
+### bore-core — Phase 5: direct peer-to-peer transport
+1. TCP transport implementation behind the `Transport` trait
+2. LAN peer discovery (mDNS or broadcast)
+3. Attempt direct connection before relay fallback
+4. Transport selection logic (direct vs relayed)
 
 ### relay — Phase 3: rate limiting
 1. Per-IP rate limiting for room creation
@@ -310,6 +319,21 @@ Mutual authentication without pre-shared keys, PAKE binding to rendezvous codes 
 - 159 total tests (12 new error-path and boundary-condition tests for the transfer engine)
 - All quality gates pass: cargo test ✓, clippy ✓, fmt ✓, cargo check for bore-cli ✓
 - Updated lib.rs project snapshot, BUILD.md, README.md to reflect Phase 3 completion
+
+- Phase 4 complete for bore-core: rendezvous and network transport
+- Transport trait (`Transport`) abstracting WebSocket, TCP, and in-process streams
+- WebSocket client transport (`WebSocketTransport`) via `tokio-tungstenite`
+- `WsReader`/`WsWriter` adapters bridging WebSocket frames to `AsyncRead`/`AsyncWrite`
+- Rendezvous coordination module: `FullRendezvousCode` format (`room_id-channel-word-word-word`)
+- Full sender flow: connect to relay → receive room ID → generate PAKE code → handshake → transfer
+- Full receiver flow: parse code → connect to relay with room ID → handshake → receive
+- `DuplexTransport` for in-process testing fitting the `Transport` trait
+- Working CLI `send` and `receive` commands (bore-cli Phase 4)
+- New dependencies: `tokio-tungstenite`, `futures-util`, `url`
+- 180 total tests (21 new: 6 URL building, 4 duplex transport, 11 rendezvous code parsing/generation)
+- All quality gates pass: cargo test ✓, clippy ✓, fmt ✓, cargo check ✓
+- Go components verified: relay build ✓, relay tests ✓, punchthrough build ✓, bore-admin build ✓
+- Updated lib.rs project snapshot, BUILD.md, README.md to reflect Phase 4 completion
 
 ---
 
