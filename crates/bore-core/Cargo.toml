@@ -12,7 +12,13 @@ repository.workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+hkdf.workspace = true
+rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+snow.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 tracing.workspace = true
+zeroize.workspace = true

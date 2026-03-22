@@ -112,12 +112,15 @@ pub enum CryptoError {
     /// Peer authentication failed.
     #[error("peer authentication failed")]
     AuthenticationFailed,
-    /// Decryption failed (bad key, corrupted ciphertext, replay).
-    #[error("decryption failed")]
-    DecryptionFailed,
+    /// Decryption or encryption failed (bad key, corrupted ciphertext, replay).
+    #[error("crypto operation failed: {0}")]
+    DecryptionFailed(String),
     /// Key material is missing or invalid.
     #[error("invalid key material")]
     InvalidKeyMaterial,
+    /// Nonce limit reached — rekey required before sending more messages.
+    #[error("nonce limit reached, rekey required")]
+    NonceLimitReached,
 }
 
 // ---------------------------------------------------------------------------
@@ -194,7 +197,7 @@ mod tests {
         let _: BoreError = SessionError::Expired.into();
         let _: BoreError = TransferError::Rejected("no thanks".into()).into();
         let _: BoreError = ProtocolError::UnknownMessageType(0xff).into();
-        let _: BoreError = CryptoError::DecryptionFailed.into();
+        let _: BoreError = CryptoError::DecryptionFailed("test".into()).into();
         let _: BoreError = TransportError::Timeout.into();
         let _: BoreError = CodeError::Malformed("bad".into()).into();
     }
@@ -211,8 +214,8 @@ mod tests {
             "unknown message type: 0xab"
         );
         assert_eq!(
-            CryptoError::DecryptionFailed.to_string(),
-            "decryption failed"
+            CryptoError::DecryptionFailed("bad ciphertext".into()).to_string(),
+            "crypto operation failed: bad ciphertext"
         );
         assert_eq!(TransportError::Timeout.to_string(), "connection timed out");
         assert_eq!(

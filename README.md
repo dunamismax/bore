@@ -6,7 +6,7 @@ bore is a command-line tool for transferring files between two computers. The se
 
 bore is not a file sharing service. It is a transfer tool — ephemeral, encrypted, peer-authenticated, and zero-knowledge by design.
 
-> **Status: Phase 1 — protocol design and type foundations.** Core domain types, protocol message serialization, frame codec, rendezvous code model, threat model, and crypto design doc are complete. The transfer engine, crypto layer, and relay service are not yet implemented. See [BUILD.md](BUILD.md) for the full execution plan.
+> **Status: Phase 2 — cryptographic layer.** Noise XXpsk0 handshake with PAKE binding to rendezvous codes, SecureChannel with ChaCha20-Poly1305 AEAD, HKDF-derived PSK, counter-based nonces, and zeroized key material are implemented and tested. The transfer engine and relay service are not yet implemented. See [BUILD.md](BUILD.md) for the full execution plan.
 
 ## Why bore?
 
@@ -103,7 +103,7 @@ cd bore
 cargo build --release
 ```
 
-### Current commands (Phase 1)
+### Current commands (Phase 2)
 
 ```bash
 cargo run -p bore-cli                # project status (default)
