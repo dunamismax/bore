@@ -484,6 +484,11 @@ Exit criteria:
 - Config file is loaded and respected
 - `bore history` shows accurate transfer records
 
+Risks:
+- **risk:** resume protocol creates a "resume with different file" attack surface — manifest hash must be verified on reconnection
+- **risk:** persistent state on disk introduces a new data-at-rest concern — encrypt state with session-derived key
+- **risk:** config file introduces a new surface for surprising behavior — CLI flags always override, config is additive only
+
 ---
 
 ### Phase 8 — Hardening and security audit
@@ -532,6 +537,11 @@ Exit criteria:
 - Security review findings are addressed
 - SECURITY.md is updated with accurate claims
 
+Risks:
+- **risk:** fuzz testing finds issues late that require protocol-level changes — start fuzzing earlier in an ad-hoc capacity
+- **risk:** external security review may not happen — self-review with published methodology as fallback
+- **risk:** performance optimization breaks correctness — benchmark suite must include correctness assertions
+
 ---
 
 ### Phase 9 — Cross-platform polish and distribution
@@ -579,6 +589,11 @@ Exit criteria:
 - CLI output is polished and accessible
 - Documentation covers all user-facing features
 
+Risks:
+- **risk:** Windows filesystem semantics differ significantly (permissions, symlinks, path length) — may need platform-specific code paths
+- **risk:** packaging for every distribution is a maintenance burden — prioritize crates.io and GitHub releases, add others on demand
+- **risk:** NAT traversal success rates vary wildly across consumer networks — document expected success rates honestly
+
 ---
 
 ### Phase 10 — Ecosystem: library bindings, GUI, integrations
@@ -617,6 +632,11 @@ Exit criteria:
 - At least one non-Rust binding exists and works
 - Pipe mode works for streaming use cases
 - Protocol specification exists for third-party implementations
+
+Risks:
+- **risk:** stabilizing the public API too early locks in design mistakes — wait until the protocol and transport layers are proven
+- **risk:** FFI bindings expand the maintenance surface significantly — start with one binding (Python) and validate demand
+- **risk:** WASM compilation may require significant refactoring of async/networking code — treat as research, not commitment
 
 ---
 
