@@ -65,7 +65,8 @@ What does **not** exist yet:
 | `Cargo.toml` (root) | Workspace shape, shared dependency policy |
 | `crates/bore-core/src/lib.rs` | Domain types, transfer model, protocol layer |
 | `crates/bore-cli/src/main.rs` | Operator-facing CLI surface |
-| Future `crates/bore-relay/` | Relay service (after trust boundaries are defined) |
+| [relay](https://github.com/dunamismax/relay) (Go, separate repo) | Relay fallback transport — zero-knowledge stream broker |
+| [punchthrough](https://github.com/dunamismax/punchthrough) (Go, separate repo) | NAT traversal and UDP hole-punching for direct connections |
 
 **Invariant:** If docs, types, and CLI output ever disagree, the next change must reconcile all three.
 

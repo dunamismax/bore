@@ -67,21 +67,27 @@ This is the target experience, not the current implementation.
 
 ## Architecture
 
+bore is a multi-repo system. The Rust client handles encryption, file transfer, and the user-facing CLI. The network infrastructure — relay fallback and NAT traversal — lives in two companion Go repos:
+
+- **[relay](https://github.com/dunamismax/relay)** — bore's relay server. Zero-knowledge encrypted stream broker. When direct peer-to-peer fails, bore clients connect through relay, which forwards encrypted bytes without being able to read them. Go.
+- **[punchthrough](https://github.com/dunamismax/punchthrough)** — bore's NAT traversal library. STUN-based NAT discovery and UDP hole-punching so bore clients can establish direct connections through NATs without relay fallback. Go.
+
 ```text
-bore-core          bore-cli          bore-relay
-   |                  |                  |
-   |  transfer model  |  operator CLI    |  relay service
-   |  session state   |  send/receive    |  room management
-   |  crypto layer    |  progress UI     |  zero-knowledge store
-   |  protocol codec  |  history         |  rate limiting
-   |  transport trait  |  config          |  deployment config
-   |                  |                  |
-   +------ shared types + protocol ------+
+bore-core (Rust)      bore-cli (Rust)      relay (Go)          punchthrough (Go)
+   |                     |                    |                    |
+   |  transfer model     |  operator CLI      |  relay service     |  STUN client
+   |  session state      |  send/receive      |  room management   |  NAT classification
+   |  crypto layer       |  progress UI       |  zero-knowledge    |  UDP hole-punching
+   |  protocol codec     |  history           |  rate limiting     |  coordination
+   |  transport trait     |  config            |  deployment        |  probe cache
+   |                     |                    |                    |
+   +--- shared protocol + encrypted stream ---+--------------------+
 ```
 
-- **`bore-core`** — the engine. Transfer model, session state machine, cryptographic layer, protocol codec, transport abstraction. Designed to be embedded by any frontend.
-- **`bore-cli`** — the operator interface. Send, receive, history, relay management. Thin shell over `bore-core`.
-- **`bore-relay`** — the optional relay server. Forwards encrypted traffic between peers that can't connect directly. Learns nothing about content. Self-hostable.
+- **`bore-core`** — the engine. Transfer model, session state machine, cryptographic layer, protocol codec, transport abstraction. Designed to be embedded by any frontend. Rust.
+- **`bore-cli`** — the operator interface. Send, receive, history, relay management. Thin shell over `bore-core`. Rust.
+- **[relay](https://github.com/dunamismax/relay)** — the fallback transport. Forwards encrypted traffic between peers that can't connect directly. Learns nothing about content. Self-hostable. Go.
+- **[punchthrough](https://github.com/dunamismax/punchthrough)** — the fast path. NAT traversal and hole-punching to make direct connections succeed. Go.
 
 ## Building from source
 
