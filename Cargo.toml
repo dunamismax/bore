@@ -1,0 +1,17 @@
+[workspace]
+members = [
+    "crates/bore-core",
+    "crates/bore-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.85"
+authors = ["Stephen Sawyer"]
+
+[workspace.dependencies]
+anyhow = "1.0.98"
+clap = { version = "4.5.38", features = ["derive"] }
