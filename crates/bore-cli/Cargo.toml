@@ -1,10 +1,12 @@
 [package]
 name = "bore-cli"
+description = "CLI for bore — privacy-first file transfer tool"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 authors.workspace = true
+repository.workspace = true
 
 [[bin]]
 name = "bore"

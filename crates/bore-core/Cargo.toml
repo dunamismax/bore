@@ -1,10 +1,12 @@
 [package]
 name = "bore-core"
+description = "Core library for bore — transfer model, session state, protocol types, crypto layer"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 authors.workspace = true
+repository.workspace = true
 
 [lib]
 path = "src/lib.rs"

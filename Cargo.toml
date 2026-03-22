@@ -11,6 +11,11 @@ edition = "2024"
 license = "MIT"
 rust-version = "1.85"
 authors = ["Stephen Sawyer"]
+repository = "https://github.com/dunamismax/bore"
+homepage = "https://github.com/dunamismax/bore"
+description = "Privacy-first file transfer with human-friendly codes and end-to-end encryption"
+categories = ["command-line-utilities", "network-programming"]
+keywords = ["file-transfer", "encryption", "peer-to-peer", "cli"]
 
 [workspace.dependencies]
 anyhow = "1.0.98"
