@@ -1,6 +1,8 @@
 use anyhow::Result;
 use bore_core::{ALL_COMPONENTS, project_snapshot};
 use clap::{Parser, Subcommand};
+use tracing::info;
+use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -10,12 +12,16 @@ use clap::{Parser, Subcommand};
     long_about = "bore transfers files between two machines using short, human-readable codes.\n\n\
         End-to-end encrypted. Direct when possible, relayed when necessary.\n\
         The relay learns nothing about your files.\n\n\
-        Currently in Phase 0 — foundational types and project scaffold only.\n\
+        Currently in Phase 1 — protocol design and type foundations.\n\
         The transfer engine is not yet implemented."
 )]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
+
+    /// Enable verbose output (set BORE_LOG=debug for more detail).
+    #[arg(short, long, global = true)]
+    verbose: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -72,6 +78,19 @@ enum Command {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    // Initialize tracing subscriber.
+    // Use BORE_LOG env var for filter, defaulting to "warn" (or "info" with --verbose).
+    let default_filter = if cli.verbose { "info" } else { "warn" };
+    let filter =
+        EnvFilter::try_from_env("BORE_LOG").unwrap_or_else(|_| EnvFilter::new(default_filter));
+
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .init();
+
+    info!("bore starting (phase: {})", bore_core::CURRENT_PHASE);
 
     match cli.command.unwrap_or(Command::Status) {
         Command::Status => print_status(),

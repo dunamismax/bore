@@ -1,14 +1,21 @@
 //! Core library for `bore` — a privacy-first file transfer tool.
 //!
-//! This crate owns the transfer model, session state, protocol types, and domain logic.
-//! It is designed to be embedded by any frontend (CLI, GUI, FFI) and contains no IO
-//! or platform-specific code in its public API.
+//! This crate owns the transfer model, session state, protocol types, codec,
+//! rendezvous code system, and domain logic. It is designed to be embedded by
+//! any frontend (CLI, GUI, FFI) and contains no IO or platform-specific code
+//! in its public API.
 //!
 //! # Current state
 //!
-//! Phase 0: foundational types and project metadata. The transfer engine, crypto layer,
-//! and transport abstraction are not yet implemented.
+//! Phase 1: protocol design and type foundations. Core domain types are defined
+//! with serde serialization, the session state machine is exhaustively tested,
+//! protocol message types have concrete structs with round-trip serialization,
+//! and the rendezvous code format is designed with documented entropy budget.
+//! The transfer engine, crypto layer, and transport abstraction are not yet
+//! implemented.
 
+pub mod code;
+pub mod codec;
 pub mod error;
 pub mod protocol;
 pub mod session;
@@ -22,11 +29,10 @@ pub mod transfer;
 pub const PROJECT_NAME: &str = "bore";
 
 /// Current development phase.
-pub const CURRENT_PHASE: &str = "phase-0";
+pub const CURRENT_PHASE: &str = "phase-1";
 
 /// Human-readable status for the repository today.
-pub const CURRENT_STATUS: &str =
-    "Scaffold with foundational types. Transfer engine and crypto are not implemented yet.";
+pub const CURRENT_STATUS: &str = "Protocol design and type foundations. Domain types, serde serialization, rendezvous codes, and codec are implemented. Transfer engine and crypto are not.";
 
 /// Short statement of intent.
 pub const MISSION: &str = "Privacy-first file transfer with human-friendly rendezvous, end-to-end encryption, and zero-knowledge relay.";
@@ -50,8 +56,10 @@ impl PlannedComponent {
 
     pub const fn current_state(self) -> &'static str {
         match self {
-            Self::Cli => "scaffold — prints project status, planned command structure",
-            Self::Core => "scaffold — foundational types, no transfer engine yet",
+            Self::Cli => "scaffold — prints project status, tracing subscriber setup",
+            Self::Core => {
+                "phase-1 — domain types, serde protocol messages, codec, rendezvous codes"
+            }
             Self::Relay => "planned — not started",
         }
     }
@@ -92,25 +100,30 @@ pub fn project_snapshot() -> ProjectSnapshot {
         status: CURRENT_STATUS,
         mission: MISSION,
         implemented_now: &[
-            "Rust workspace scaffold (bore-core, bore-cli)",
-            "Foundational domain types (session, transfer, protocol, error)",
+            "Rust workspace (bore-core, bore-cli)",
+            "Domain types with serde serialization (session, transfer, protocol, error)",
+            "Session state machine with exhaustive transition tests",
+            "Protocol message types (Hello, Offer, Accept, Reject, Data, Ack, Done, Error, Close)",
+            "Frame codec for wire-format encoding/decoding",
+            "Rendezvous code system (256-word list, ~34-bit entropy default)",
+            "Typed error hierarchy using thiserror",
+            "Structured tracing subscriber in CLI",
+            "Threat model and crypto design documents",
             "CLI with planned command structure",
-            "Project docs: README, BUILD, ARCHITECTURE, SECURITY",
         ],
         explicitly_not_implemented: &[
             "Cryptographic protocol (Noise handshake, AEAD encryption)",
             "Transfer engine (chunking, streaming, integrity verification)",
             "Direct peer-to-peer transport (TCP, QUIC, hole-punching)",
             "Relay service (WebSocket forwarding, room management)",
-            "Rendezvous code generation and exchange",
+            "Rendezvous code exchange over network",
             "Resumable session state persistence",
             "NAT traversal (STUN/TURN, ICE-lite)",
         ],
         next_focus: &[
-            "Phase 1: threat model, session lifecycle, protocol message types",
-            "Phase 1: human-friendly code design and entropy budget",
             "Phase 2: Noise XX handshake + PAKE binding to rendezvous code",
             "Phase 2: ChaCha20-Poly1305 encrypted data channel",
+            "Phase 2: CryptoTransport trait with zeroized key material",
         ],
     }
 }
@@ -123,7 +136,7 @@ mod tests {
     fn snapshot_is_truthful() {
         let snap = project_snapshot();
         assert_eq!(snap.name, "bore");
-        assert_eq!(snap.phase, "phase-0");
+        assert_eq!(snap.phase, "phase-1");
         assert!(!snap.explicitly_not_implemented.is_empty());
         assert!(!snap.next_focus.is_empty());
     }

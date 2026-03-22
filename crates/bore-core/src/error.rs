@@ -6,243 +6,158 @@
 //! Note: these types are defined now to establish the error taxonomy. Most variants
 //! will be exercised as the transfer engine, crypto layer, and transport are implemented.
 
-use std::fmt;
+use thiserror::Error;
 
 /// Top-level error type for bore-core operations.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum BoreError {
     /// Session-related errors (creation, state transitions, expiry).
-    Session(SessionError),
+    #[error("session error: {0}")]
+    Session(#[from] SessionError),
     /// Transfer-related errors (manifest, chunks, integrity).
-    Transfer(TransferError),
+    #[error("transfer error: {0}")]
+    Transfer(#[from] TransferError),
     /// Protocol-related errors (framing, versioning, messages).
-    Protocol(ProtocolError),
+    #[error("protocol error: {0}")]
+    Protocol(#[from] ProtocolError),
     /// Crypto-related errors (handshake, encryption, key material).
-    Crypto(CryptoError),
+    #[error("crypto error: {0}")]
+    Crypto(#[from] CryptoError),
     /// Transport-related errors (connection, relay, timeout).
-    Transport(TransportError),
-}
-
-impl fmt::Display for BoreError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Session(e) => write!(f, "session error: {e}"),
-            Self::Transfer(e) => write!(f, "transfer error: {e}"),
-            Self::Protocol(e) => write!(f, "protocol error: {e}"),
-            Self::Crypto(e) => write!(f, "crypto error: {e}"),
-            Self::Transport(e) => write!(f, "transport error: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for BoreError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Session(e) => Some(e),
-            Self::Transfer(e) => Some(e),
-            Self::Protocol(e) => Some(e),
-            Self::Crypto(e) => Some(e),
-            Self::Transport(e) => Some(e),
-        }
-    }
+    #[error("transport error: {0}")]
+    Transport(#[from] TransportError),
+    /// Code-related errors (generation, parsing, validation).
+    #[error("code error: {0}")]
+    Code(#[from] CodeError),
 }
 
 // ---------------------------------------------------------------------------
 // Session errors
 // ---------------------------------------------------------------------------
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum SessionError {
     /// Attempted an invalid state transition.
+    #[error("invalid transition from {from} to {to}")]
     InvalidTransition {
         from: &'static str,
         to: &'static str,
     },
     /// Session has expired.
+    #[error("session expired")]
     Expired,
     /// Session was cancelled by a peer.
+    #[error("session cancelled")]
     Cancelled,
     /// Session ID is malformed or unknown.
+    #[error("invalid session ID")]
     InvalidSessionId,
-}
-
-impl fmt::Display for SessionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidTransition { from, to } => {
-                write!(f, "invalid transition from {from} to {to}")
-            }
-            Self::Expired => write!(f, "session expired"),
-            Self::Cancelled => write!(f, "session cancelled"),
-            Self::InvalidSessionId => write!(f, "invalid session ID"),
-        }
-    }
-}
-
-impl std::error::Error for SessionError {}
-
-impl From<SessionError> for BoreError {
-    fn from(e: SessionError) -> Self {
-        Self::Session(e)
-    }
 }
 
 // ---------------------------------------------------------------------------
 // Transfer errors
 // ---------------------------------------------------------------------------
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum TransferError {
     /// File manifest is invalid or inconsistent.
+    #[error("invalid manifest: {0}")]
     InvalidManifest(String),
     /// A chunk failed integrity verification.
+    #[error("chunk {chunk_index} failed integrity check")]
     ChunkIntegrityFailure { chunk_index: u64 },
     /// Transfer was rejected by the receiver.
+    #[error("transfer rejected: {0}")]
     Rejected(String),
     /// Not enough disk space for the transfer.
+    #[error("insufficient space: need {required} bytes, have {available}")]
     InsufficientSpace { required: u64, available: u64 },
     /// A file could not be read or written.
+    #[error("file IO error: {0}")]
     FileIo(String),
-}
-
-impl fmt::Display for TransferError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidManifest(msg) => write!(f, "invalid manifest: {msg}"),
-            Self::ChunkIntegrityFailure { chunk_index } => {
-                write!(f, "chunk {chunk_index} failed integrity check")
-            }
-            Self::Rejected(reason) => write!(f, "transfer rejected: {reason}"),
-            Self::InsufficientSpace {
-                required,
-                available,
-            } => write!(
-                f,
-                "insufficient space: need {required} bytes, have {available}"
-            ),
-            Self::FileIo(msg) => write!(f, "file IO error: {msg}"),
-        }
-    }
-}
-
-impl std::error::Error for TransferError {}
-
-impl From<TransferError> for BoreError {
-    fn from(e: TransferError) -> Self {
-        Self::Transfer(e)
-    }
 }
 
 // ---------------------------------------------------------------------------
 // Protocol errors
 // ---------------------------------------------------------------------------
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum ProtocolError {
     /// Received a message with an unknown or unsupported type tag.
+    #[error("unknown message type: 0x{0:02x}")]
     UnknownMessageType(u8),
     /// Protocol version mismatch.
+    #[error("version mismatch: ours={ours}, theirs={theirs}")]
     VersionMismatch { ours: u32, theirs: u32 },
     /// Message frame is malformed (wrong length, bad encoding).
+    #[error("malformed frame: {0}")]
     MalformedFrame(String),
     /// Unexpected message in the current protocol state.
+    #[error("expected {expected}, got {got}")]
     UnexpectedMessage { expected: &'static str, got: String },
-}
-
-impl fmt::Display for ProtocolError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::UnknownMessageType(tag) => write!(f, "unknown message type: 0x{tag:02x}"),
-            Self::VersionMismatch { ours, theirs } => {
-                write!(f, "version mismatch: ours={ours}, theirs={theirs}")
-            }
-            Self::MalformedFrame(msg) => write!(f, "malformed frame: {msg}"),
-            Self::UnexpectedMessage { expected, got } => {
-                write!(f, "expected {expected}, got {got}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for ProtocolError {}
-
-impl From<ProtocolError> for BoreError {
-    fn from(e: ProtocolError) -> Self {
-        Self::Protocol(e)
-    }
+    /// Serialization or deserialization error.
+    #[error("serialization error: {0}")]
+    Serialization(String),
 }
 
 // ---------------------------------------------------------------------------
 // Crypto errors
 // ---------------------------------------------------------------------------
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum CryptoError {
     /// Handshake failed (wrong code, malformed message, timeout).
+    #[error("handshake failed: {0}")]
     HandshakeFailed(String),
     /// Peer authentication failed.
+    #[error("peer authentication failed")]
     AuthenticationFailed,
     /// Decryption failed (bad key, corrupted ciphertext, replay).
+    #[error("decryption failed")]
     DecryptionFailed,
     /// Key material is missing or invalid.
+    #[error("invalid key material")]
     InvalidKeyMaterial,
-}
-
-impl fmt::Display for CryptoError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::HandshakeFailed(msg) => write!(f, "handshake failed: {msg}"),
-            Self::AuthenticationFailed => write!(f, "peer authentication failed"),
-            Self::DecryptionFailed => write!(f, "decryption failed"),
-            Self::InvalidKeyMaterial => write!(f, "invalid key material"),
-        }
-    }
-}
-
-impl std::error::Error for CryptoError {}
-
-impl From<CryptoError> for BoreError {
-    fn from(e: CryptoError) -> Self {
-        Self::Crypto(e)
-    }
 }
 
 // ---------------------------------------------------------------------------
 // Transport errors
 // ---------------------------------------------------------------------------
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum TransportError {
     /// Connection to peer failed.
+    #[error("connection failed: {0}")]
     ConnectionFailed(String),
     /// Connection timed out.
+    #[error("connection timed out")]
     Timeout,
     /// Connection was reset by peer.
+    #[error("connection reset by peer")]
     ConnectionReset,
     /// Relay is unreachable or returned an error.
+    #[error("relay error: {0}")]
     RelayError(String),
     /// DNS resolution failed.
+    #[error("DNS resolution failed: {0}")]
     DnsFailure(String),
 }
 
-impl fmt::Display for TransportError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ConnectionFailed(msg) => write!(f, "connection failed: {msg}"),
-            Self::Timeout => write!(f, "connection timed out"),
-            Self::ConnectionReset => write!(f, "connection reset by peer"),
-            Self::RelayError(msg) => write!(f, "relay error: {msg}"),
-            Self::DnsFailure(msg) => write!(f, "DNS resolution failed: {msg}"),
-        }
-    }
-}
+// ---------------------------------------------------------------------------
+// Code errors
+// ---------------------------------------------------------------------------
 
-impl std::error::Error for TransportError {}
-
-impl From<TransportError> for BoreError {
-    fn from(e: TransportError) -> Self {
-        Self::Transport(e)
-    }
+#[derive(Debug, Error)]
+pub enum CodeError {
+    /// The code string is malformed (wrong format, missing parts).
+    #[error("malformed code: {0}")]
+    Malformed(String),
+    /// A word in the code is not in the wordlist.
+    #[error("unknown word in code: {0}")]
+    UnknownWord(String),
+    /// The channel number is out of range.
+    #[error("channel number out of range: {0}")]
+    InvalidChannel(u16),
 }
 
 // ---------------------------------------------------------------------------
@@ -281,5 +196,28 @@ mod tests {
         let _: BoreError = ProtocolError::UnknownMessageType(0xff).into();
         let _: BoreError = CryptoError::DecryptionFailed.into();
         let _: BoreError = TransportError::Timeout.into();
+        let _: BoreError = CodeError::Malformed("bad".into()).into();
+    }
+
+    #[test]
+    fn thiserror_display_matches_expected_format() {
+        assert_eq!(SessionError::Expired.to_string(), "session expired");
+        assert_eq!(
+            TransferError::ChunkIntegrityFailure { chunk_index: 42 }.to_string(),
+            "chunk 42 failed integrity check"
+        );
+        assert_eq!(
+            ProtocolError::UnknownMessageType(0xab).to_string(),
+            "unknown message type: 0xab"
+        );
+        assert_eq!(
+            CryptoError::DecryptionFailed.to_string(),
+            "decryption failed"
+        );
+        assert_eq!(TransportError::Timeout.to_string(), "connection timed out");
+        assert_eq!(
+            CodeError::InvalidChannel(9999).to_string(),
+            "channel number out of range: 9999"
+        );
     }
 }

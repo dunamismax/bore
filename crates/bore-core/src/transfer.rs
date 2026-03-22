@@ -8,6 +8,8 @@
 
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
+
 // ---------------------------------------------------------------------------
 // Transfer intent
 // ---------------------------------------------------------------------------
@@ -15,7 +17,7 @@ use std::path::PathBuf;
 /// What the sender wants to transfer.
 ///
 /// Created locally by the sender before any network activity.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferIntent {
     /// Human-readable name for this transfer (e.g., file name or directory name).
     pub name: String,
@@ -42,7 +44,7 @@ impl TransferIntent {
 // ---------------------------------------------------------------------------
 
 /// A single file or directory entry in a transfer manifest.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileEntry {
     /// Path relative to the transfer root (never absolute, never starts with `..`).
     pub relative_path: PathBuf,
@@ -55,7 +57,8 @@ pub struct FileEntry {
 }
 
 /// The type of a transfer entry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum EntryType {
     /// A regular file.
     File,
@@ -83,7 +86,7 @@ pub const DEFAULT_CHUNK_SIZE: u32 = 256 * 1024;
 ///
 /// Each chunk is independently verifiable. The receiver checks integrity
 /// per-chunk and can report failures immediately.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Chunk {
     /// Index of this chunk within the file (0-based).
     pub index: u64,
@@ -98,7 +101,7 @@ pub struct Chunk {
 // ---------------------------------------------------------------------------
 
 /// Snapshot of transfer progress at a point in time.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransferProgress {
     /// Total bytes expected across all files.
     pub total_bytes: u64,
@@ -215,5 +218,56 @@ mod tests {
         };
         assert_eq!(intent.file_count(), 2);
         assert_eq!(intent.human_size(), "2.9 KB");
+    }
+
+    #[test]
+    fn transfer_intent_serde_round_trip() {
+        let intent = TransferIntent {
+            name: "test-transfer".to_string(),
+            entries: vec![
+                FileEntry {
+                    relative_path: PathBuf::from("file.txt"),
+                    entry_type: EntryType::File,
+                    size: 4096,
+                    executable: false,
+                },
+                FileEntry {
+                    relative_path: PathBuf::from("subdir"),
+                    entry_type: EntryType::Directory,
+                    size: 0,
+                    executable: false,
+                },
+            ],
+            total_bytes: 4096,
+        };
+        let json = serde_json::to_string(&intent).unwrap();
+        let back: TransferIntent = serde_json::from_str(&json).unwrap();
+        assert_eq!(intent, back);
+    }
+
+    #[test]
+    fn chunk_serde_round_trip() {
+        let chunk = Chunk {
+            index: 7,
+            offset: 1_835_008,
+            length: 262_144,
+        };
+        let json = serde_json::to_string(&chunk).unwrap();
+        let back: Chunk = serde_json::from_str(&json).unwrap();
+        assert_eq!(chunk, back);
+    }
+
+    #[test]
+    fn transfer_progress_serde_round_trip() {
+        let progress = TransferProgress {
+            total_bytes: 10_000,
+            bytes_transferred: 5_000,
+            total_files: 3,
+            files_completed: 1,
+            current_file: Some(PathBuf::from("photo.jpg")),
+        };
+        let json = serde_json::to_string(&progress).unwrap();
+        let back: TransferProgress = serde_json::from_str(&json).unwrap();
+        assert_eq!(progress, back);
     }
 }

@@ -33,24 +33,30 @@ The long-term product lets two parties move files with minimal ceremony, clear t
 
 ## Repo snapshot
 
-**Current phase: Phase 0 — truthful scaffold**
+**Current phase: Phase 1 — protocol design and type foundations (done)**
 
 What exists:
 - Rust workspace with `bore-core` and `bore-cli`
 - CLI prints truthful project status and component state
 - Documentation: README, BUILD manual, ARCHITECTURE, SECURITY, LICENSE
 - Quality gates: `cargo check`, `cargo test`, `cargo fmt`, `cargo clippy`
-- Foundation types in `bore-core` modeling the transfer domain
+- Core domain types with serde serialization: session, transfer, protocol, error, code
+- Frame codec (`codec.rs`) for wire-format encoding/decoding
+- Rendezvous code module (`code.rs`) with 256-word curated wordlist and entropy budget
+- Protocol message structs with typed payloads and serde round-trip tests
+- Exhaustive session state machine tests (93 total tests)
+- Threat model document (`docs/threat-model.md`)
+- Crypto design document (`docs/crypto-design.md`)
+- `tracing` subscriber in CLI, `thiserror` derives in core errors
+- Dependencies: `serde`, `serde_json`, `tracing`, `tracing-subscriber`, `thiserror`
 
 What does **not** exist yet:
-- Cryptographic protocol or key exchange
+- Cryptographic protocol or key exchange (design doc exists, implementation planned for Phase 2)
 - Transfer engine (chunking, streaming, integrity)
 - Direct peer-to-peer transport
 - Relay protocol or relay service
-- Rendezvous / code generation and exchange
 - Resumable session state persistence
 - NAT traversal or hole-punching
-- Protocol versioning or compatibility guarantees
 
 ---
 
@@ -64,7 +70,11 @@ What does **not** exist yet:
 | `SECURITY.md` | Threat model, security policy, disclosure process |
 | `Cargo.toml` (root) | Workspace shape, shared dependency policy |
 | `crates/bore-core/src/lib.rs` | Domain types, transfer model, protocol layer |
+| `crates/bore-core/src/codec.rs` | Frame encoding/decoding for wire protocol |
+| `crates/bore-core/src/code.rs` | Rendezvous code generation, parsing, wordlist |
 | `crates/bore-cli/src/main.rs` | Operator-facing CLI surface |
+| `docs/threat-model.md` | Threat model: actors, assets, attack scenarios |
+| `docs/crypto-design.md` | Cryptographic design: Noise XX, PAKE, ChaCha20-Poly1305 |
 | [relay](https://github.com/dunamismax/relay) (Go, separate repo) | Relay fallback transport — zero-knowledge stream broker |
 | [punchthrough](https://github.com/dunamismax/punchthrough) (Go, separate repo) | NAT traversal and UDP hole-punching for direct connections |
 
@@ -145,19 +155,20 @@ If a gate is temporarily unavailable, document why. Never silently skip.
 |-------|---------|-------|
 | `anyhow` | Error handling (CLI) | 0 |
 | `clap` | CLI argument parsing | 0 |
+| `thiserror` | Typed errors in core | 1 |
+| `serde` + `serde_json` | Serialization (protocol messages, types) | 1 |
+| `tracing` | Structured observability | 1 |
+| `tracing-subscriber` | Log output in CLI | 1 |
 
 ### Planned dependencies (subject to design decisions)
 
 | Crate | Purpose | Phase | Notes |
 |-------|---------|-------|-------|
-| `thiserror` | Typed errors in core | 1 | Library-grade errors, not anyhow |
-| `serde` + `serde_json` | Serialization | 1 | Protocol messages, config |
 | `tokio` | Async runtime | 2 | Required for network IO |
 | `snow` | Noise Protocol (XX) | 2 | E2E key exchange. Alternative: `noise-protocol` |
 | `chacha20poly1305` | AEAD encryption | 2 | Post-handshake symmetric encryption |
 | `blake3` | Hashing / integrity | 3 | File chunk verification |
 | `indicatif` | Progress bars | 3 | Transfer progress UI |
-| `tracing` | Structured logging | 1 | Observability from day one |
 | `quinn` / `s2n-quic` | QUIC transport | 5 | Direct P2P + relay transport |
 | `stun-rs` | STUN/TURN | 5 | NAT traversal |
 | `axum` or `hyper` | Relay HTTP/WebSocket | 6 | Relay server framework |
@@ -190,16 +201,16 @@ Exit criteria:
 ---
 
 ### Phase 1 — Protocol design and type foundations
-**Status: planned**
+**Status: done / checked**
 
 This phase is about making decisions, not writing transfer code. The output is types, design docs, and tests — not a working transfer.
 
 Goals:
-- [ ] Write threat model document (`docs/threat-model.md`)
+- [x] Write threat model document (`docs/threat-model.md`)
   - Define actors: sender, receiver, relay operator, network observer, malicious relay
   - Define assets: file content, file metadata, sender/receiver identity, transfer timing
   - Define non-goals: anonymity (Tor-level), plausible deniability, multi-party transfer
-- [ ] Define core domain types in `bore-core`:
+- [x] Define core domain types in `bore-core`:
   - `SessionId` — unique per transfer session, cryptographically random
   - `TransferIntent` — what the sender wants to send (files, directories, metadata)
   - `TransferRole` — `Sender` | `Receiver`
@@ -207,33 +218,33 @@ Goals:
   - `SessionState` — state machine: `Created → Waiting → Connected → Transferring → Complete | Failed`
   - `ProtocolVersion` — for future compatibility negotiation
   - `Capability` — feature flags for negotiation (compression, resume, etc.)
-- [ ] Design the session lifecycle and error model
+- [x] Design the session lifecycle and error model
   - Every state transition has an explicit error variant
   - Timeouts are first-class, not afterthoughts
   - Cancellation is clean from any state
-- [ ] Choose protocol envelope format
-  - Likely: length-prefixed binary frames with a type tag
-  - Messages: `Hello`, `Offer`, `Accept`, `Reject`, `Data`, `Ack`, `Done`, `Error`
+- [x] Choose protocol envelope format
+  - Length-prefixed binary frames with a type tag
+  - Messages: `Hello`, `Offer`, `Accept`, `Reject`, `Data`, `Ack`, `Done`, `Error`, `Close`
   - Versioned from the start
-- [ ] Design human-friendly code model
+- [x] Design human-friendly code model
   - Wordlist-based (e.g., `7-guitar-castle-moon`)
-  - Entropy budget: balance usability vs. brute-force resistance
+  - Entropy budget: ~34 bits default (3 words + channel)
   - Code lifetime and single-use semantics
-  - Code-to-session binding mechanism
-- [ ] Add `tracing` for structured observability
-- [ ] Add `thiserror` for typed error variants in core
-- [ ] Unit tests for all state transitions and type invariants
+  - Code-to-session binding mechanism (PAKE via Noise PSK)
+- [x] Add `tracing` for structured observability
+- [x] Add `thiserror` for typed error variants in core
+- [x] Unit tests for all state transitions and type invariants (93 tests)
 
 Exit criteria:
-- Design docs exist under `docs/`
-- Core types model the session honestly and completely
-- State machine has tests for every valid transition and every invalid one
-- Threat model has been written and reviewed (even if self-reviewed)
-- Protocol message types are defined with serde serialization
+- [x] Design docs exist under `docs/` (threat-model.md, crypto-design.md)
+- [x] Core types model the session honestly and completely
+- [x] State machine has tests for every valid transition and every invalid one (exhaustive matrix)
+- [x] Threat model has been written and reviewed (even if self-reviewed)
+- [x] Protocol message types are defined with serde serialization
 
 Risks:
-- **risk:** over-designing the protocol before any transfer code exists — keep it minimal and evolvable
-- **risk:** choosing crypto primitives too early without understanding the trust model
+- **risk (mitigated):** over-designing the protocol before any transfer code exists — kept types minimal and evolvable
+- **risk (mitigated):** choosing crypto primitives too early without understanding the trust model — threat model written first, crypto design is a plan not implementation
 
 ---
 
@@ -750,6 +761,22 @@ Recommended order for starting Phase 1:
 - Expanded project scope: 10-phase roadmap, technical architecture doc, security policy, dependency strategy, detailed protocol design notes
 - Added foundational domain types to bore-core: error types, transfer model, session state, protocol version, transport mode
 - Expanded CLI with planned command structure
+- **Phase 1 complete:**
+  - Wrote threat model document (`docs/threat-model.md`): actors, assets, attack scenarios, trust boundaries, metadata exposure matrix
+  - Wrote crypto design document (`docs/crypto-design.md`): Noise XX + PAKE, ChaCha20-Poly1305, key derivation, entropy analysis, key lifecycle
+  - Added `thiserror` to bore-core, migrated all error types from manual Display/Error impls to derive macros
+  - Added `tracing` + `tracing-subscriber` to workspace, initialized subscriber in bore-cli
+  - Added `serde` + `serde_json` to workspace, added Serialize/Deserialize to all domain types
+  - Created `codec.rs`: frame encoding/decoding with round-trip tests
+  - Created `code.rs`: rendezvous code generation/parsing, 256-word curated wordlist, entropy budget documentation
+  - Added `TransportMode::Unknown` variant
+  - Added concrete protocol message structs (`HelloMessage`, `OfferMessage`, `AcceptMessage`, `RejectMessage`, `DataMessage`, `AckMessage`, `DoneMessage`, `ErrorMessage`, `CloseMessage`) with serde serialization
+  - Added `CodeError` variant to error taxonomy
+  - Exhaustive session state machine tests (full transition matrix)
+  - 93 total tests, all passing
+  - All quality gates pass: `cargo check`, `cargo test`, `cargo fmt --check`, `cargo clippy -- -D warnings`
+  - Updated `project_snapshot()` to reflect Phase 1 state
+  - Updated README, BUILD.md, source-of-truth mapping, dependency table
 
 ---
 

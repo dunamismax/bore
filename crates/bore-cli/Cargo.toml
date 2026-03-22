@@ -15,4 +15,6 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 bore-core = { path = "../bore-core" }
