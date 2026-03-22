@@ -1,17 +1,338 @@
 # BUILD.md
 
-Operator notes while bore is still a scaffold.
+## Purpose
 
-## Commands
+This file is the execution manual for `bore`.
 
-```bash
-cargo check
-cargo run -p bore-cli
-cargo run -p bore-cli -- components
-```
+It exists to keep the repo honest while the project grows from a scaffold into a real file transfer system. At any given point it should answer:
+- what `bore` is trying to become
+- what exists right now
+- what is explicitly not built yet
+- what the next correct move is
+- what must be proven before stronger claims are made
 
-## Notes
+## Mission
 
-- current crates: `bore-core`, `bore-cli`
-- do not claim end-to-end encryption, relay support, or protocol compatibility yet
+Build a Rust-first file transfer tool with human-friendly coordination, privacy-first defaults, and a credible path to direct transfer plus relay-assisted delivery.
+
+The long-term product should let two parties move files with minimal ceremony and clear trust boundaries while staying truthful about what is local, what is relayed, and what is actually encrypted.
+
+## Repo snapshot
+
+Current phase: **Phase 0**
+
+Current state:
+- workspace root is in place
+- `bore-core` exists as a minimal shared library crate
+- `bore-cli` exists as a minimal package that builds the `bore` binary
+- the CLI prints a truthful project snapshot and planned component map
+- core docs exist: `README.md`, `BUILD.md`, `LICENSE`, `.gitignore`
+- the scaffold is expected to compile and run cleanly on a current stable toolchain
+
+What does **not** exist yet:
+- transfer protocol
+- crypto design or implementation
+- direct peer-to-peer transport
+- relay protocol or relay service
+- discovery / rendezvous code generation
+- file chunking, streaming, or resume logic
+- persistence model
+- interoperability guarantees
+
+## Source-of-truth mapping
+
+- `README.md`: public-facing project description and honest repo status
+- `BUILD.md`: implementation map, phase tracking, decisions, and working rules
+- `Cargo.toml` (root): workspace shape and shared dependency policy
+- `crates/bore-core/src/lib.rs`: current runtime project snapshot and planned component metadata
+- `crates/bore-cli/src/main.rs`: operator-facing CLI surface
+- future `crates/bore-relay`: relay service, only after trust and protocol boundaries are defined
+
+Repo-specific operating truth:
+- the current executable seam is `bore_core::project_snapshot()` plus `PlannedComponent`
+- the `bore` CLI is supposed to print what the repo really is today, not what we hope it becomes later
+- docs and CLI output must stay aligned
+- do not claim end-to-end encryption, relay support, or protocol compatibility until they exist and are checked
+
+If docs and code disagree, the next change should make them agree immediately.
+
+## Current executable behavior
+
+The current CLI supports:
+- `bore` or `bore status`: print project phase, status, mission, implemented-now list, not-yet-built list, and next focus
+- `bore components`: print the current component map (`cli`, `core`, `relay`)
+
+That is intentionally small. Phase 0 should provide a real, truthful entry point without pretending the transport layer exists.
+
+## Architecture and data flow
+
+### Intended long-term shape
+
+1. **CLI / local operator shell**
+   - parses intent
+   - gathers local file metadata
+   - drives session lifecycle
+   - presents codes, progress, and errors
+
+2. **Core library**
+   - owns transfer model
+   - owns session state machine
+   - owns capability negotiation and framing rules
+   - owns protocol-safe types and validation
+   - should remain usable by future desktop, service, or TUI shells
+
+3. **Optional relay service**
+   - relays traffic when direct connectivity fails or is undesirable
+   - should learn as little as possible
+   - should not become the end-user trust root
+
+### Phase-0 data flow
+
+Current flow is intentionally tiny:
+- CLI starts
+- CLI reads static project metadata from `bore-core`
+- CLI prints truthful status or planned component state
+
+That sounds small because it is. Good. It means the repo already has a real executable seam and a stable place to hang future work.
+
+### Planned transfer flow later
+
+Likely shape, subject to change after design work:
+- sender selects file(s)
+- session intent is created locally
+- rendezvous material / short code is generated
+- receiver joins with code
+- capability and trust checks run
+- direct path is attempted first where appropriate
+- relay fallback is negotiated if needed
+- encrypted transfer stream begins
+- integrity and completion are verified
+
+Do not implement this from vibes. Each stage needs explicit trust, failure, and recovery semantics.
+
+## Working rules
+
+- Rust only for now
+- keep the core crate small, explicit, and testable
 - keep CLI output and docs aligned
+- do not claim security properties before the threat model and tests exist
+- prefer reversible structure over speculative complexity
+- direct transfer and relay transfer must be designed as explicit modes, not hidden magic
+- docs are part of the product surface; keep them current
+- phase labels must stay truthful
+
+## Tracking conventions
+
+Use the following status language in docs, issues, and commit messages:
+- **done**: implemented and checked
+- **checked**: verified by command or test output
+- **planned**: intentional but not started
+- **blocked**: cannot proceed without a decision or dependency
+- **risk**: plausible failure mode that could distort the design
+- **decision**: a durable call with consequences
+
+When new work lands, update:
+- repo snapshot
+- phase dashboard
+- decisions if architecture changed
+- progress log with date and what was actually verified
+
+## Quality gates
+
+Minimum gate for Phase 0 and early Phase 1 work:
+- `cargo check`
+- `cargo test`
+- `cargo fmt --check`
+- `cargo clippy --workspace --all-targets -- -D warnings`
+
+For docs-only work, run the smallest checks that prove the wording is consistent and the repo state still matches the commands being shown.
+
+If some gate is temporarily unavailable, document why rather than silently skipping it.
+
+## Phase dashboard
+
+### Phase 0 — truthful scaffold
+Status: **done / checked**
+
+Goals:
+- create workspace
+- create core and CLI crates
+- add honest docs
+- pass `cargo check`
+- make the CLI print truthful status and component state
+
+Exit criteria:
+- repo structure is stable enough for real work to start
+- public docs do not overclaim
+- executable entry point exists
+- CLI and docs tell the same story
+
+### Phase 1 — protocol and trust model
+Status: **planned**
+
+Goals:
+- define actors, assets, and trust boundaries
+- define session lifecycle and error model
+- choose first protocol envelope and message framing
+- pick initial cryptographic approach and dependency policy
+- define human-friendly code/rendezvous model
+
+Exit criteria:
+- design docs exist
+- core types model the session honestly
+- tests exist for parsing and state transitions
+
+### Phase 2 — local transfer engine
+Status: **planned**
+
+Goals:
+- file metadata model
+- chunking / streaming design
+- sender / receiver roles
+- integrity verification
+- local happy-path transfer prototype
+
+Exit criteria:
+- transfer works in a controlled local scenario
+- failures are represented cleanly
+- tests cover core state transitions
+
+### Phase 3 — connectivity strategy
+Status: **planned**
+
+Goals:
+- direct path strategy
+- NAT / connectivity assumptions
+- relay fallback contract
+- transport abstraction boundary
+
+Exit criteria:
+- direct and relay modes are explicit in code
+- fallback behavior is deterministic and observable
+
+### Phase 4 — relay implementation
+Status: **planned**
+
+Goals:
+- implement relay crate/service
+- constrain relay visibility and retained state
+- add deployment and operator docs
+
+Exit criteria:
+- relay can support transfers without becoming the trust root
+- operator responsibilities are documented
+
+### Phase 5 — hardening and productization
+Status: **planned**
+
+Goals:
+- test matrix
+- resumability design
+- performance profiling
+- packaging and release discipline
+- security review and documentation
+
+Exit criteria:
+- behavior is reproducible
+- operational guidance exists
+- security claims have evidence behind them
+
+## Detailed phase plan
+
+### Phase 0 tasks
+- [x] initialize workspace
+- [x] add `bore-core`
+- [x] add `bore-cli`
+- [x] make CLI print truthful project status
+- [x] add README
+- [x] add BUILD manual
+- [x] add MIT license
+- [x] add `.gitignore`
+- [x] verify with `cargo check`
+
+### Phase 1 tasks
+- [ ] write design note for threat model and non-goals
+- [ ] define `SessionId`, `TransferIntent`, `TransferRole`, and `TransportMode` in `bore-core`
+- [ ] design code-entry / rendezvous UX
+- [ ] choose cryptographic primitives and supporting crates
+- [ ] decide whether relay is blind, metadata-aware, or mixed
+- [ ] add unit tests around state transitions
+
+### Phase 2 tasks
+- [ ] define file manifest model
+- [ ] define chunking strategy
+- [ ] implement a local sender/receiver state machine
+- [ ] prove integrity verification path
+- [ ] add failure injection tests
+
+### Phase 3 tasks
+- [ ] design transport trait boundary
+- [ ] prototype direct mode
+- [ ] prototype relay negotiation
+- [ ] define observability events and tracing fields
+
+### Phase 4 tasks
+- [ ] create `bore-relay` crate
+- [ ] define relay config surface
+- [ ] define operator deployment story
+- [ ] add integration tests between CLI, core, and relay
+
+### Phase 5 tasks
+- [ ] benchmark large-file transfer behavior
+- [ ] define resume semantics
+- [ ] package releases
+- [ ] document supported compatibility window
+- [ ] run explicit security review before strong security marketing
+
+## Risks
+
+- **risk:** naming the product goal too aggressively before protocol work can push the code toward theater instead of proof
+- **risk:** human-friendly codes can become a UX win and a security failure if trust semantics are vague
+- **risk:** relay convenience can quietly become relay dependence if transport boundaries are not explicit early
+- **risk:** overbuilding now will waste time before the transfer model is clear
+- **risk:** under-documenting decisions will make later protocol work inconsistent
+
+## Decisions
+
+### decision-0001: start as a Rust workspace
+Reason:
+- keeps growth path open without forcing a monolith
+- supports a clean separation between CLI, core logic, and future relay work
+
+### decision-0002: keep Phase 0 intentionally minimal
+Reason:
+- avoids fake-finished transfer code
+- puts honesty and compile health ahead of premature implementation
+
+### decision-0003: CLI-first entry point
+Reason:
+- fastest way to exercise architecture and developer workflow
+- easiest operator surface for early experiments
+
+### decision-0004: no security claims without proof
+Reason:
+- the project's credibility depends on disciplined truth-telling
+- protocol and crypto are the hard part, so they must be earned
+
+## Immediate next moves
+
+Recommended order:
+1. write a short threat-model / non-goals design note under `docs/`
+2. add first real domain types to `bore-core`
+3. decide the first rendezvous-code UX and validation rules
+4. add `tracing`, `thiserror`, and tests once the first stateful logic lands
+5. only then consider a transport prototype
+
+## Progress log
+
+### 2026-03-22
+- initialized the repo as a Rust workspace
+- added `bore-core` and `bore-cli`
+- added an executable `bore` binary that prints current scaffold status
+- added README, BUILD manual, MIT license, and `.gitignore`
+- verified the initial scaffold with `cargo check`
+- restored the richer README / BUILD project-tracking notes after the docs-tightening regression
+- realigned the docs around the current CLI behavior and `bore-core` runtime snapshot
+- verified the doc restoration with `git diff --check`, `cargo check`, `cargo test`, `cargo run -p bore-cli -- status`, and `cargo run -p bore-cli -- components`
+
+Update this log only with things that actually happened.
