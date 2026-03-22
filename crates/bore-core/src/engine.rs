@@ -316,10 +316,15 @@ pub fn sha256_hash(data: &[u8]) -> [u8; 32] {
 }
 
 /// Calculate the number of chunks needed for a given data size and chunk size.
+///
+/// # Panics
+///
+/// Panics if `chunk_size` is zero and `data_len` is non-zero.
 pub fn chunk_count(data_len: u64, chunk_size: u32) -> u64 {
     if data_len == 0 {
         return 0;
     }
+    assert!(chunk_size > 0, "chunk_size must be non-zero");
     data_len.div_ceil(chunk_size as u64)
 }
 
@@ -854,17 +859,9 @@ mod tests {
         filename: &str,
         data: &[u8],
     ) -> (SendResult, ReceiveResult) {
-        let (transport_a, transport_b) = duplex(1024 * 1024);
-        let (_, write_half) = tokio::io::split(transport_a);
-        let (read_half, _) = tokio::io::split(transport_b);
-
         let fname = filename.to_string();
         let send_data_copy = data.to_vec();
 
-        // We need to move the channel refs into the async blocks.
-        // Since we can't move &mut across threads, we use a scoped approach.
-        // Run in a single task since we need &mut references to both channels.
-        // Use a duplex stream with enough buffer for the full transfer.
         let (tx_stream, rx_stream) = duplex(4 * 1024 * 1024);
         let (_, mut tx_writer) = tokio::io::split(tx_stream);
         let (mut rx_reader, _) = tokio::io::split(rx_stream);
@@ -874,14 +871,7 @@ mod tests {
             receive_data(receiver_ch, &mut rx_reader),
         );
 
-        let send_result = sr.unwrap();
-        let recv_result = rr.unwrap();
-
-        // Drop the first duplex we created (unused in favor of the second)
-        drop(write_half);
-        drop(read_half);
-
-        (send_result, recv_result)
+        (sr.unwrap(), rr.unwrap())
     }
 
     // -----------------------------------------------------------------------
@@ -1018,6 +1008,350 @@ mod tests {
         assert!(result2.is_err());
         assert!(result2.unwrap_err().to_string().contains("path separator"));
     }
+
+    // -----------------------------------------------------------------------
+    // Decoding: additional error cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn decode_rejects_header_with_excessive_chunk_count() {
+        // Build a header with chunk_count > MAX_CHUNK_COUNT
+        let header = FileHeader {
+            filename: "test.bin".to_string(),
+            size: u64::MAX,
+            sha256: [0u8; 32],
+            chunk_size: 1,
+            chunk_count: MAX_CHUNK_COUNT + 1,
+        };
+        let encoded = encode_header(&header);
+        let result = decode_message(&encoded);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("chunk count too large")
+        );
+    }
+
+    #[test]
+    fn decode_rejects_header_with_filename_truncated() {
+        // Build a header that claims a filename length longer than what follows
+        let mut buf = vec![MSG_HEADER];
+        buf.extend_from_slice(&100u64.to_be_bytes()); // size
+        buf.extend_from_slice(&[0u8; 32]); // sha256
+        buf.extend_from_slice(&256u32.to_be_bytes()); // chunk_size
+        buf.extend_from_slice(&1u64.to_be_bytes()); // chunk_count
+        buf.extend_from_slice(&50u16.to_be_bytes()); // name_len = 50
+        buf.extend_from_slice(b"short"); // only 5 bytes of name
+        let result = decode_message(&buf);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("truncated"));
+    }
+
+    #[test]
+    fn decode_rejects_header_with_invalid_utf8_filename() {
+        let mut buf = vec![MSG_HEADER];
+        buf.extend_from_slice(&100u64.to_be_bytes());
+        buf.extend_from_slice(&[0u8; 32]);
+        buf.extend_from_slice(&256u32.to_be_bytes());
+        buf.extend_from_slice(&1u64.to_be_bytes());
+        let bad_utf8 = &[0xFF, 0xFE, 0xFD];
+        buf.extend_from_slice(&(bad_utf8.len() as u16).to_be_bytes());
+        buf.extend_from_slice(bad_utf8);
+        let result = decode_message(&buf);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("UTF-8"));
+    }
+
+    #[test]
+    fn decode_rejects_header_with_filename_too_long() {
+        let mut buf = vec![MSG_HEADER];
+        buf.extend_from_slice(&100u64.to_be_bytes());
+        buf.extend_from_slice(&[0u8; 32]);
+        buf.extend_from_slice(&256u32.to_be_bytes());
+        buf.extend_from_slice(&1u64.to_be_bytes());
+        // name_len > MAX_FILENAME_LEN (4096)
+        buf.extend_from_slice(&(MAX_FILENAME_LEN as u16 + 1).to_be_bytes());
+        // Don't need to add actual bytes — the length check fires first
+        let result = decode_message(&buf);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("filename too long")
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // chunk_count: edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn chunk_count_zero_chunk_size_with_zero_data() {
+        // Zero data with zero chunk_size is fine — short-circuits
+        assert_eq!(chunk_count(0, 0), 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "chunk_size must be non-zero")]
+    fn chunk_count_zero_chunk_size_with_data_panics() {
+        chunk_count(100, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Integration: receiver error paths
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn receive_rejects_out_of_order_chunks() {
+        let (mut sender_ch, mut receiver_ch) = handshake_pair("ooo-chunks").await;
+
+        let (tx_stream, rx_stream) = duplex(1024 * 1024);
+        let (_, mut tx_writer) = tokio::io::split(tx_stream);
+        let (mut rx_reader, _) = tokio::io::split(rx_stream);
+
+        let data = vec![0u8; DEFAULT_CHUNK_SIZE as usize * 2];
+        let sha256 = sha256_hash(&data);
+
+        let send_task = async {
+            // Send header
+            let header = FileHeader {
+                filename: "test.bin".to_string(),
+                size: data.len() as u64,
+                sha256,
+                chunk_size: DEFAULT_CHUNK_SIZE,
+                chunk_count: 2,
+            };
+            sender_ch
+                .send(&encode_header(&header), &mut tx_writer)
+                .await
+                .unwrap();
+            // Send chunk index 1 first (out of order — should be 0)
+            sender_ch
+                .send(
+                    &encode_chunk(1, &data[..DEFAULT_CHUNK_SIZE as usize]),
+                    &mut tx_writer,
+                )
+                .await
+                .unwrap();
+        };
+
+        let recv_task = async { receive_data(&mut receiver_ch, &mut rx_reader).await };
+
+        let (_, recv_result) = tokio::join!(send_task, recv_task);
+        assert!(recv_result.is_err());
+        assert!(
+            recv_result
+                .unwrap_err()
+                .to_string()
+                .contains("integrity check")
+        );
+    }
+
+    #[tokio::test]
+    async fn receive_rejects_chunk_count_mismatch() {
+        let (mut sender_ch, mut receiver_ch) = handshake_pair("cc-mismatch").await;
+
+        let (tx_stream, rx_stream) = duplex(1024 * 1024);
+        let (_, mut tx_writer) = tokio::io::split(tx_stream);
+        let (mut rx_reader, _) = tokio::io::split(rx_stream);
+
+        let data = b"hello";
+        let sha256 = sha256_hash(data);
+
+        let send_task = async {
+            // Header claims 2 chunks but we only send 1 + End
+            let header = FileHeader {
+                filename: "test.bin".to_string(),
+                size: data.len() as u64,
+                sha256,
+                chunk_size: DEFAULT_CHUNK_SIZE,
+                chunk_count: 2,
+            };
+            sender_ch
+                .send(&encode_header(&header), &mut tx_writer)
+                .await
+                .unwrap();
+            sender_ch
+                .send(&encode_chunk(0, data), &mut tx_writer)
+                .await
+                .unwrap();
+            sender_ch.send(&encode_end(), &mut tx_writer).await.unwrap();
+        };
+
+        let recv_task = async { receive_data(&mut receiver_ch, &mut rx_reader).await };
+
+        let (_, recv_result) = tokio::join!(send_task, recv_task);
+        assert!(recv_result.is_err());
+        assert!(
+            recv_result
+                .unwrap_err()
+                .to_string()
+                .contains("chunk count mismatch")
+        );
+    }
+
+    #[tokio::test]
+    async fn receive_rejects_size_mismatch() {
+        let (mut sender_ch, mut receiver_ch) = handshake_pair("sz-mismatch").await;
+
+        let (tx_stream, rx_stream) = duplex(1024 * 1024);
+        let (_, mut tx_writer) = tokio::io::split(tx_stream);
+        let (mut rx_reader, _) = tokio::io::split(rx_stream);
+
+        let data = b"hello world";
+        let sha256 = sha256_hash(data);
+
+        let send_task = async {
+            // Header claims size is 5 but we send 11 bytes
+            let header = FileHeader {
+                filename: "test.bin".to_string(),
+                size: 5, // wrong
+                sha256,
+                chunk_size: DEFAULT_CHUNK_SIZE,
+                chunk_count: 1,
+            };
+            sender_ch
+                .send(&encode_header(&header), &mut tx_writer)
+                .await
+                .unwrap();
+            sender_ch
+                .send(&encode_chunk(0, data), &mut tx_writer)
+                .await
+                .unwrap();
+            sender_ch.send(&encode_end(), &mut tx_writer).await.unwrap();
+        };
+
+        let recv_task = async { receive_data(&mut receiver_ch, &mut rx_reader).await };
+
+        let (_, recv_result) = tokio::join!(send_task, recv_task);
+        assert!(recv_result.is_err());
+        assert!(
+            recv_result
+                .unwrap_err()
+                .to_string()
+                .contains("size mismatch")
+        );
+    }
+
+    #[tokio::test]
+    async fn receive_rejects_sha256_mismatch() {
+        let (mut sender_ch, mut receiver_ch) = handshake_pair("sha-mismatch").await;
+
+        let (tx_stream, rx_stream) = duplex(1024 * 1024);
+        let (_, mut tx_writer) = tokio::io::split(tx_stream);
+        let (mut rx_reader, _) = tokio::io::split(rx_stream);
+
+        let data = b"hello";
+
+        let send_task = async {
+            // Header has a bogus SHA-256
+            let header = FileHeader {
+                filename: "test.bin".to_string(),
+                size: data.len() as u64,
+                sha256: [0xAA; 32], // wrong hash
+                chunk_size: DEFAULT_CHUNK_SIZE,
+                chunk_count: 1,
+            };
+            sender_ch
+                .send(&encode_header(&header), &mut tx_writer)
+                .await
+                .unwrap();
+            sender_ch
+                .send(&encode_chunk(0, data), &mut tx_writer)
+                .await
+                .unwrap();
+            sender_ch.send(&encode_end(), &mut tx_writer).await.unwrap();
+        };
+
+        let recv_task = async { receive_data(&mut receiver_ch, &mut rx_reader).await };
+
+        let (_, recv_result) = tokio::join!(send_task, recv_task);
+        assert!(recv_result.is_err());
+        assert!(
+            recv_result
+                .unwrap_err()
+                .to_string()
+                .contains("SHA-256 integrity verification failed")
+        );
+    }
+
+    #[tokio::test]
+    async fn receive_rejects_unexpected_header_mid_transfer() {
+        let (mut sender_ch, mut receiver_ch) = handshake_pair("dup-header").await;
+
+        let (tx_stream, rx_stream) = duplex(1024 * 1024);
+        let (_, mut tx_writer) = tokio::io::split(tx_stream);
+        let (mut rx_reader, _) = tokio::io::split(rx_stream);
+
+        let data = b"hello";
+        let sha256 = sha256_hash(data);
+
+        let send_task = async {
+            let header = FileHeader {
+                filename: "test.bin".to_string(),
+                size: data.len() as u64,
+                sha256,
+                chunk_size: DEFAULT_CHUNK_SIZE,
+                chunk_count: 1,
+            };
+            // Send header
+            sender_ch
+                .send(&encode_header(&header), &mut tx_writer)
+                .await
+                .unwrap();
+            // Send another header instead of a chunk
+            sender_ch
+                .send(&encode_header(&header), &mut tx_writer)
+                .await
+                .unwrap();
+        };
+
+        let recv_task = async { receive_data(&mut receiver_ch, &mut rx_reader).await };
+
+        let (_, recv_result) = tokio::join!(send_task, recv_task);
+        assert!(recv_result.is_err());
+        assert!(
+            recv_result
+                .unwrap_err()
+                .to_string()
+                .contains("unexpected header")
+        );
+    }
+
+    #[tokio::test]
+    async fn receive_rejects_non_header_as_first_message() {
+        let (mut sender_ch, mut receiver_ch) = handshake_pair("no-header").await;
+
+        let (tx_stream, rx_stream) = duplex(1024 * 1024);
+        let (_, mut tx_writer) = tokio::io::split(tx_stream);
+        let (mut rx_reader, _) = tokio::io::split(rx_stream);
+
+        let send_task = async {
+            // Send a chunk as the first message (should be header)
+            sender_ch
+                .send(&encode_chunk(0, b"data"), &mut tx_writer)
+                .await
+                .unwrap();
+        };
+
+        let recv_task = async { receive_data(&mut receiver_ch, &mut rx_reader).await };
+
+        let (_, recv_result) = tokio::join!(send_task, recv_task);
+        assert!(recv_result.is_err());
+        assert!(
+            recv_result
+                .unwrap_err()
+                .to_string()
+                .contains("expected header")
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Integration: encrypted transfer round-trips (continued)
+    // -----------------------------------------------------------------------
 
     #[tokio::test]
     async fn multiple_sequential_transfers() {

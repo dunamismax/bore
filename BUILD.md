@@ -56,7 +56,7 @@ Each Go component has its own `go.mod` for independent dependency management:
 
 ### bore-core / bore-cli (Rust)
 
-**Current phase: Phase 2 — cryptographic layer (done)**
+**Current phase: Phase 3 — transfer engine (done)**
 
 What exists:
 - Rust workspace with `bore-core` and `bore-cli`
@@ -69,13 +69,16 @@ What exists:
 - HKDF-SHA256 PSK derivation from rendezvous codes
 - Counter-based nonces with replay detection
 - Multi-segment framing, rekey support, key material zeroization
-- 105 total tests including crypto integration tests
+- Transfer engine: chunking (256 KiB default), streaming over SecureChannel, SHA-256 integrity verification
+- Binary wire format for header/chunk/end messages (type-tagged, big-endian)
+- Filename validation: path traversal, null bytes, relative components, length limits
+- 159 total tests including transfer engine integration and error-path tests
 - Design docs: threat model, crypto design
 
 What does **not** exist yet:
-- Transfer engine (chunking, streaming, integrity)
 - Direct peer-to-peer transport
-- Relay protocol integration
+- Relay protocol integration from Rust client
+- Rendezvous code exchange over network
 - Resumable session state persistence
 - NAT traversal integration
 
@@ -227,7 +230,7 @@ go vet ./...
 | Crate | Purpose | Phase |
 |-------|---------|-------|
 | `snow` | Noise Protocol XXpsk0 handshake + ChaCha20-Poly1305 transport | 2 |
-| `hkdf` + `sha2` | HKDF-SHA256 PSK derivation | 2 |
+| `hkdf` + `sha2` | HKDF-SHA256 PSK derivation; SHA-256 transfer integrity | 2, 3 |
 | `zeroize` | Key material cleanup on drop | 2 |
 | `rand` | CSPRNG for keypair generation | 2 |
 | `tokio` | Async runtime for handshake IO | 2 |
@@ -249,13 +252,11 @@ go vet ./...
 
 ## Immediate next moves
 
-### bore-core — Phase 3: local transfer engine
-1. Define file manifest model (FileEntry, TransferManifest)
-2. Implement chunking strategy (256 KiB default, blake3 per-chunk)
-3. Implement sender/receiver state machines
-4. Integrity verification (per-chunk and full-file)
-5. Progress reporting trait
-6. Integration tests through the crypto layer
+### bore-core — Phase 4: rendezvous and code exchange
+1. Rendezvous code exchange over network transport
+2. Peer discovery and connection coordination
+3. Integration with relay for code-based matchmaking
+4. Session lifecycle: code generation → exchange → handshake → transfer
 
 ### relay — Phase 3: rate limiting
 1. Per-IP rate limiting for room creation
@@ -304,6 +305,11 @@ Mutual authentication without pre-shared keys, PAKE binding to rendezvous codes 
 - All components compile: `cargo check` ✓, `go build ./...` ✓ for all Go modules
 - Module paths updated to monorepo scheme
 - Unified README and BUILD manual written
+- Phase 3 complete for bore-core: transfer engine with chunking, streaming, SHA-256 integrity verification
+- Transfer engine: binary wire format (header/chunk/end), 256 KiB chunks, filename validation
+- 159 total tests (12 new error-path and boundary-condition tests for the transfer engine)
+- All quality gates pass: cargo test ✓, clippy ✓, fmt ✓, cargo check for bore-cli ✓
+- Updated lib.rs project snapshot, BUILD.md, README.md to reflect Phase 3 completion
 
 ---
 

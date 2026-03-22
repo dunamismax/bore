@@ -6,7 +6,7 @@ bore is a command-line tool for transferring files between two computers. The se
 
 bore is not a file sharing service. It is a transfer tool — ephemeral, encrypted, peer-authenticated, and zero-knowledge by design.
 
-> **Status: Active development across all components.** The cryptographic layer (Noise XXpsk0 + ChaCha20-Poly1305) is implemented and tested. The relay server handles WebSocket-based connection brokering with room management. The NAT traversal library performs STUN probing and UDP hole-punching. The admin dashboard is scaffolded. See [BUILD.md](BUILD.md) for the full execution plan.
+> **Status: Active development across all components.** The transfer engine (chunking, streaming, SHA-256 integrity verification over encrypted SecureChannel) is implemented and tested. Built on the Noise XXpsk0 + ChaCha20-Poly1305 cryptographic layer. The relay server handles WebSocket-based connection brokering with room management. The NAT traversal library performs STUN probing and UDP hole-punching. The admin dashboard is scaffolded. See [BUILD.md](BUILD.md) for the full execution plan.
 
 ## Why bore?
 
@@ -108,7 +108,7 @@ bore is a monorepo with a Rust client core and Go network infrastructure. The Ru
 
 | Component | Language | Location | Phase | What it does |
 |-----------|----------|----------|-------|-------------|
-| **bore-core** | Rust | `crates/bore-core/` | Phase 2 | Transfer engine, session state, cryptographic layer, protocol codec, transport abstraction. Designed to be embedded by any frontend. |
+| **bore-core** | Rust | `crates/bore-core/` | Phase 3 | Transfer engine, session state, cryptographic layer, protocol codec, transport abstraction. Designed to be embedded by any frontend. |
 | **bore-cli** | Rust | `crates/bore-cli/` | Phase 2 | Operator interface. Send, receive, history, relay management. Thin shell over bore-core. |
 | **relay** | Go | `services/relay/` | Phase 2 | Zero-knowledge encrypted stream broker. Pairs connections by room ID and forwards encrypted bytes. Self-hostable. |
 | **punchthrough** | Go | `lib/punchthrough/` | Phase 2 | NAT traversal library. STUN-based NAT discovery and UDP hole-punching for direct peer connections. |
@@ -206,11 +206,12 @@ cd services/bore-admin && go build ./... && go vet ./...
 │   │   └── src/
 │   │       ├── lib.rs        # domain types, session state, transfer model
 │   │       ├── crypto.rs     # Noise XXpsk0 handshake, SecureChannel
+│   │       ├── engine.rs     # transfer engine: chunking, streaming, SHA-256
 │   │       ├── codec.rs      # frame encoding/decoding
 │   │       ├── code.rs       # rendezvous code generation/parsing
 │   │       ├── protocol.rs   # protocol message types
 │   │       ├── session.rs    # session state machine
-│   │       ├── transfer.rs   # transfer model
+│   │       ├── transfer.rs   # transfer model types
 │   │       └── error.rs      # typed error variants
 │   └── bore-cli/             # Rust — operator CLI
 │       └── src/main.rs
@@ -238,10 +239,13 @@ cd services/bore-admin && go build ./... && go vet ./...
 
 ## Component status
 
-### bore-core and bore-cli — Phase 2 (cryptographic layer) ✓
+### bore-core — Phase 3 (transfer engine) ✓ / bore-cli — Phase 2 ✓
 
-The Rust client core is through its second major phase. What exists:
+The Rust client core is through its third major phase. What exists:
 
+- **Transfer engine** with chunking (256 KiB default), streaming over SecureChannel, SHA-256 integrity verification
+- **Binary wire format** for header/chunk/end messages with type tags and big-endian encoding
+- **Filename validation** against path traversal, null bytes, relative components, and length limits
 - **Noise XXpsk0 handshake** with PAKE binding to rendezvous codes
 - **SecureChannel** with ChaCha20-Poly1305 AEAD encryption
 - **HKDF-SHA256** PSK derivation from rendezvous codes
@@ -249,10 +253,10 @@ The Rust client core is through its second major phase. What exists:
 - **Multi-segment framing** for payloads exceeding 64KB
 - **Rekey support** for long-running transfers
 - **Key material zeroization** on drop
-- **105 tests** including crypto integration tests
+- **159 tests** including transfer integration, error-path, and crypto tests
 - Core domain types: session state machine, protocol messages, frame codec, rendezvous codes
 
-What's next: transfer engine (Phase 3), then rendezvous and code exchange (Phase 4).
+What's next: rendezvous and code exchange (Phase 4), then direct peer-to-peer transport (Phase 5).
 
 ### relay — Phase 2 (WebSocket transport) ✓
 
@@ -298,7 +302,7 @@ What's next: relay health polling and SQLite storage (Phase 1).
 | 0 | Truthful scaffold | **Done** |
 | 1 | Protocol design and type foundations | **Done** |
 | 2 | Cryptographic layer | **Done** |
-| 3 | Local transfer engine | Planned |
+| 3 | Local transfer engine | **Done** |
 | 4 | Rendezvous and code exchange | Planned |
 | 5 | Direct peer-to-peer transport | Planned |
 | 6 | Relay service integration | Planned |

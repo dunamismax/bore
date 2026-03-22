@@ -59,7 +59,7 @@ impl PlannedComponent {
         match self {
             Self::Cli => "scaffold — prints project status, tracing subscriber setup",
             Self::Core => "phase-3 — transfer engine, chunking, SHA-256 integrity, crypto layer",
-            Self::Relay => "planned — not started",
+            Self::Relay => "go relay exists — Rust client integration not started",
         }
     }
 
@@ -112,23 +112,25 @@ pub fn project_snapshot() -> ProjectSnapshot {
             "Multi-segment framing for payloads larger than 64KB",
             "Key material zeroization (zeroize crate + snow internals)",
             "Rekey support for long-running transfers",
+            "Transfer engine with chunking, streaming, SHA-256 integrity verification",
+            "Binary wire format for header/chunk/end messages over SecureChannel",
+            "Filename validation (path traversal, null bytes, relative components)",
             "Typed error hierarchy using thiserror",
             "Structured tracing subscriber in CLI",
             "Threat model and crypto design documents",
             "CLI with planned command structure",
         ],
         explicitly_not_implemented: &[
-            "Transfer engine (chunking, streaming, integrity verification)",
             "Direct peer-to-peer transport (TCP, QUIC, hole-punching)",
-            "Relay service (WebSocket forwarding, room management)",
+            "Relay protocol integration from Rust client",
             "Rendezvous code exchange over network",
             "Resumable session state persistence",
-            "NAT traversal (STUN/TURN, ICE-lite)",
+            "NAT traversal integration (STUN/TURN, ICE-lite)",
         ],
         next_focus: &[
-            "Phase 3: file manifest model and chunking strategy",
-            "Phase 3: sender/receiver state machines with crypto integration",
-            "Phase 3: in-process transfer with integrity verification",
+            "Phase 4: rendezvous and code exchange over network",
+            "Phase 5: direct peer-to-peer transport",
+            "Phase 6: relay service integration from Rust client",
         ],
     }
 }
