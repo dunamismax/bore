@@ -2,7 +2,7 @@
 
 Technical architecture and design notes for `bore`.
 
-This document describes the **current repo architecture** and the near-term shape it is growing toward. For build commands and the current execution checklist, see [BUILD.md](BUILD.md).
+This document describes the current repo architecture and the near-term shape it is growing toward. For build commands and the current execution checklist, see [BUILD.md](BUILD.md).
 
 ---
 
@@ -39,7 +39,7 @@ bore currently consists of four tracked components:
 3. **Punchthrough (`lib/punchthrough/`)** contains STUN and UDP hole-punching primitives for a future direct path.
 4. **bore-admin (`services/bore-admin/`)** is scaffold-only and does not yet participate in runtime behavior.
 
-The current verified path is **relay-based transfer**. Direct P2P is still a planned integration step, not current runtime behavior.
+The current verified path is **relay-based transfer**. Direct transport is still a planned integration step, not current runtime behavior.
 
 ---
 
@@ -70,8 +70,6 @@ lib/punchthrough/
 services/bore-admin/
 └── cmd/bore-admin/           # truthful scaffold placeholder
 ```
-
-Rust crates are intentionally gone from `main`. History belongs in git history, not in a frozen source subtree.
 
 ---
 
@@ -163,7 +161,7 @@ Owns:
 - room creation / room join flow
 - bridging transport + crypto + engine into the user flow
 
-This is the current “happy path” integration layer for the client.
+This is the current happy-path integration layer for the client.
 
 #### `client/internal/transport`
 
@@ -174,7 +172,7 @@ Owns:
 
 Near-term extension point:
 
-- this is where direct transport can later sit beside the relay transport, with selection logic above it
+- direct transport can later sit beside the relay transport, with selection logic above it
 
 ---
 
@@ -203,6 +201,7 @@ Owns:
 - process startup
 - bind address configuration
 - wiring the transport server to the room registry
+- shutdown orchestration
 
 #### `services/relay/internal/room`
 
@@ -314,7 +313,7 @@ Sender                               Relay                         Receiver
   │                                    │                              │
 ```
 
-### Planned direct-first flow
+### Planned transport selection
 
 ```text
                     ┌────────────────────┐
@@ -333,7 +332,7 @@ Sender                               Relay                         Receiver
             └─────────────┘    └───────────────┘
 ```
 
-This selection logic is **planned**, not current behavior.
+This selection logic is planned, not current behavior.
 
 ---
 
@@ -343,7 +342,7 @@ This selection logic is **planned**, not current behavior.
 2. **Relay stays payload-blind.**
 3. **Rendezvous code is cryptographic input, not cosmetic metadata.**
 4. **Direct transport is optional architecture, not a precondition for shipping the relay path.**
-5. **Do not preserve dead implementations in-tree once the migration decision is made.**
+5. **Scaffolds stay clearly labeled until they carry real workload.**
 
 ---
 
@@ -352,6 +351,6 @@ This selection logic is **planned**, not current behavior.
 - integrate punchthrough into client transport selection
 - add resumable transfer state and resume protocol rules
 - harden relay operations with rate limiting, health, and metrics
-- decide whether any future Zig layer is justified by real operator or packaging pain
+- decide how much operator surface bore-admin actually needs before it grows beyond a scaffold
 
 For the current execution plan and verification commands, see [BUILD.md](BUILD.md). For security claims and limits, see [SECURITY.md](SECURITY.md).

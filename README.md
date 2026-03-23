@@ -2,7 +2,7 @@
 
 **Privacy-first file transfer. No accounts, no cloud, no trust in the relay.**
 
-bore moves files between two machines with a short human-readable rendezvous code. The current shipped path is a Go client that performs an end-to-end encrypted relay-based transfer through a self-hostable Go relay. Future direct transport and any later operator tooling stay on the Go / Zig / C path only.
+bore moves a file between two machines with a short human-readable rendezvous code. The current shipped path uses a self-hostable relay to connect peers while keeping file data end-to-end encrypted.
 
 ## Status
 
@@ -11,9 +11,8 @@ bore moves files between two machines with a short human-readable rendezvous cod
 - the active client lives in `client/` and is implemented in **Go**
 - the relay lives in `services/relay/` and is implemented in **Go**
 - NAT tooling lives in `lib/punchthrough/` and is implemented in **Go**
-- `services/bore-admin/` is a **Go scaffold**, not a real admin surface yet
-- the tracked Rust implementation has been **removed from main**
-- the repo direction is **Go now**, with **Zig** or **C** only where they later earn their keep
+- `services/bore-admin/` is a scaffold, not a real admin surface yet
+- the verified transfer path today is **relay-based**, not direct peer-to-peer
 
 ## What works today
 
@@ -25,23 +24,23 @@ bore moves files between two machines with a short human-readable rendezvous cod
 - self-hostable WebSocket relay in `services/relay/`
 - standalone NAT probing and hole-punching groundwork in `lib/punchthrough/`
 
-## What is still TODO
+## What is still next
 
-- direct P2P transport wired into the client path
+- direct transport wired into the client path
 - resumable transfers
 - directory transfer
 - relay rate limiting, health endpoints, and metrics
 - admin tooling beyond scaffold status
-- security hardening and external review beyond current local verification
+- broader security hardening and external review
 
 ## Components
 
-| Component | Language | Location | Status | Purpose |
-|---|---|---|---|---|
-| `bore` client | Go | `client/` | active | Rendezvous, handshake, encrypted transfer, CLI |
-| `relay` | Go | `services/relay/` | active | WebSocket room broker for encrypted payload forwarding |
-| `punchthrough` | Go | `lib/punchthrough/` | active but not integrated | NAT probing and UDP hole-punching primitives |
-| `bore-admin` | Go | `services/bore-admin/` | scaffold | Future relay monitoring and operator tooling |
+| Component | Location | Status | Purpose |
+|---|---|---|---|
+| `bore` client | `client/` | active | Rendezvous, handshake, encrypted transfer, CLI |
+| `relay` | `services/relay/` | active | WebSocket room broker for encrypted payload forwarding |
+| `punchthrough` | `lib/punchthrough/` | active but not integrated | NAT probing and UDP hole-punching primitives |
+| `bore-admin` | `services/bore-admin/` | scaffold | Future relay monitoring and operator tooling |
 
 ## Quick start
 
@@ -140,7 +139,7 @@ go build ./cmd/bore-admin
 │   ├── relay/               # active Go relay service
 │   └── bore-admin/          # truthful scaffold only
 ├── lib/
-│   └── punchthrough/        # Go NAT tooling
+│   └── punchthrough/        # NAT tooling
 ├── docs/
 │   ├── crypto-design.md
 │   └── threat-model.md
@@ -152,23 +151,17 @@ go build ./cmd/bore-admin
 
 ## Near-term roadmap
 
-### Current lane
-
-- keep the relay-based Go client stable and honest
+- keep the relay-based path stable and honest
 - integrate `lib/punchthrough/` into transport selection
 - add resumable transfer state
 - harden relay operations and observability
-
-### Later, only if justified
-
-- Zig for local/operator-facing tooling or packaging improvements
-- C only for leaf dependencies or explicit interoperability boundaries
+- turn `services/bore-admin/` into useful operator tooling
 
 ## Notes
 
 - The rendezvous code is a cryptographic input to the handshake, not just a routing token.
 - The relay brokers connections and forwards encrypted bytes; it should stay payload-blind.
-- Rust is no longer an in-tree reference. If history matters, use git history, not dead source left in `main`.
+- The codebase currently ships one reliable transfer path. Treat direct transport as planned work until it is integrated and verified.
 - If docs and code disagree, the docs are stale. Fix both in the same change.
 
-For the execution manual and current migration tracker, start with [`BUILD.md`](BUILD.md) and [`REWRITE_TRACKER.md`](REWRITE_TRACKER.md).
+For the execution manual and current tracker, start with [`BUILD.md`](BUILD.md) and [`REWRITE_TRACKER.md`](REWRITE_TRACKER.md).

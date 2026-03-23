@@ -2,7 +2,7 @@
 
 ## Current security status
 
-bore currently implements a **real relay-based end-to-end encrypted transfer path** in the Go client.
+bore currently implements a real relay-based end-to-end encrypted transfer path in the Go client.
 
 Implemented today:
 
@@ -11,10 +11,11 @@ Implemented today:
 - ChaCha20-Poly1305 encrypted secure channel
 - SHA-256 file integrity verification in the transfer engine
 - payload-blind relay forwarding in `services/relay/`
+- room expiry and bounded in-memory room tracking in the relay
 
 Important limits on those claims:
 
-- the currently verified path is **relay-based**, not direct P2P
+- the currently verified path is **relay-based**, not direct peer-to-peer
 - the relay is functional but not yet hardened with rate limiting, health endpoints, or metrics
 - the system has **not** had an external security audit yet
 - resumable transfer behavior is not implemented yet
@@ -64,6 +65,16 @@ The relay should **not** know:
 - plaintext file content
 - plaintext file names
 - plaintext transfer metadata carried inside encrypted messages
+
+### Current relay guardrails
+
+Implemented relay guardrails are modest but real:
+
+- waiting rooms expire after the configured TTL
+- concurrent room count is bounded by registry configuration
+- WebSocket message size is capped
+
+These are baseline resource controls, not a substitute for proper abuse protection.
 
 ---
 
@@ -116,7 +127,7 @@ Not yet implemented:
 
 This means the relay should be treated as functional but not yet production-hardened against abuse or observability requirements.
 
-### Direct P2P path is not active yet
+### Direct transport is not active yet
 
 `lib/punchthrough/` exists, but it is not wired into the current client flow. Security claims should stay scoped to the current relay-based path.
 
@@ -128,12 +139,22 @@ Resume-state integrity and interruption recovery are still future work. Do not c
 
 The code has local tests and design documentation, but no independent audit or formal review should be implied.
 
+### Metadata exposure remains part of the design
+
+The relay and network can still observe:
+
+- who connected to the relay
+- when they connected
+- how long the session lasted
+- roughly how much encrypted data moved
+
+That is consistent with bore's design. It is also why bore should not be described as an anonymity system.
+
 ---
 
 ## Dependency policy
 
 - Dependencies are tracked per Go module via `go.mod` and `go.sum`.
-- There is **no Cargo toolchain or Rust dependency lockfile left in `main`**.
 - Crypto-relevant client dependencies should stay small, explicit, and reviewable.
 - Dependency updates should be accompanied by focused verification in the affected module.
 
@@ -163,7 +184,7 @@ If you discover a security vulnerability in bore, report it responsibly:
 | Relay-based encrypted transfer | Implemented |
 | Threat model documentation | Present |
 | Local tests for client/relay modules | Present |
-| Direct P2P transport security review | Not applicable yet; feature not integrated |
+| Direct transport security review | Deferred until direct transport is integrated |
 | Relay abuse controls | TODO |
 | External review / audit | TODO |
 

@@ -2,9 +2,9 @@
 
 ## Purpose
 
-This document describes bore's **current Go cryptographic design** for the relay-based transfer path and the near-term decisions still open around future expansion.
+This document describes bore's current cryptographic design for the relay-based transfer path.
 
-It is not a claim of formal verification or external audit. It is the implementation-level design reference for what the Go client is doing today.
+It is not a claim of formal verification or external audit. It is the implementation-level design reference for what the client is doing today.
 
 ---
 
@@ -89,13 +89,14 @@ Approximate entropy model:
 Default today:
 
 - **3 words**
-- **5 minute default expiry policy** in the code model
-- **single-use session intent** in the rendezvous design
+- **5 minute default room lifetime** in the relay path
+- **single receiver session intent** in the rendezvous design
 
 Operational implication:
 
-- online brute force is the relevant threat model, not direct offline key guessing in the abstract
-- keeping code lifetime short and adding relay-side rate limiting remain important future hardening steps
+- online guessing against a live room is the relevant threat model
+- keeping code lifetime short matters
+- adding relay-side rate limiting remains important follow-up hardening work
 
 ---
 

@@ -2,9 +2,9 @@
 
 ## Purpose
 
-This document defines the threat model for bore: who the actors are, what we're protecting, what attacks we expect, and what we explicitly don't cover. It's a practical reference for design decisions, not an academic exercise.
+This document defines the threat model for bore: who the actors are, what the system protects, what attacks matter, and what the current design still leaves exposed. It is a practical reference for design decisions, not an academic exercise.
 
-bore is a two-party file transfer tool. The threat model applies to the core transfer flow: sender generates a code, receiver enters it, files move. Everything else — relay infrastructure, deployment, operational security — is scoped separately where relevant.
+bore is currently a two-party file transfer tool with a relay-based encrypted path. The threat model applies to the flow where a sender creates a rendezvous code, a receiver enters it, and the file moves through the relay under end-to-end encryption.
 
 ---
 
@@ -14,79 +14,60 @@ bore is a two-party file transfer tool. The threat model applies to the core tra
 
 **Trust level: trusted (by definition)**
 
-The party initiating the transfer. They select files, generate a rendezvous code, and wait for a receiver. The sender is trusted to act honestly — bore does not protect against a malicious sender sending harmful files (that's the receiver's problem to evaluate).
+The party initiating the transfer. They select files, generate a rendezvous code, and wait for a receiver. bore does not protect against a malicious sender sending harmful files; it only protects the transport.
 
 **Capabilities:**
-- Chooses files to send
-- Generates the rendezvous code
-- Controls the session lifetime
-- Can cancel at any time
+- chooses files to send
+- generates the rendezvous code
+- controls the session lifetime
+- can cancel at any time
 
 ### Receiver
 
 **Trust level: trusted (possesses the code)**
 
-The party accepting the transfer. They know the rendezvous code (obtained out-of-band from the sender) and use it to connect, authenticate, and receive files. Possession of the code implies authorization — there is no additional access control.
+The party accepting the transfer. They know the rendezvous code, use it to authenticate into the session, and decide whether to keep the received file.
 
 **Capabilities:**
-- Enters the rendezvous code
-- Accepts or rejects the offered transfer
-- Can cancel at any time
-- Decides where to store received files
+- enters the rendezvous code
+- accepts or rejects the offered transfer
+- can cancel at any time
+- decides where to store received files
 
 ### Relay operator
 
 **Trust level: untrusted for content, semi-trusted for availability**
 
-The operator of a relay server used when direct peer-to-peer connection fails. The relay forwards encrypted bytes between sender and receiver. It is not trusted with content, metadata, or peer identity beyond what TCP/IP necessarily reveals.
+The relay forwards encrypted bytes between sender and receiver. It is not trusted with file content or transfer metadata carried inside the encrypted channel.
 
 **Capabilities:**
-- Sees connection metadata (IP addresses, timing, byte counts)
-- Can observe session duration and transfer size
-- Can throttle, delay, or drop traffic
-- Can refuse to relay
-- Cannot decrypt content or protocol messages
+- sees connection metadata such as IP addresses, timing, and encrypted byte counts
+- can throttle, delay, or drop traffic
+- can refuse to relay
+- cannot decrypt the protected application data
 
-**Honest-but-curious assumption:** The default threat model assumes the relay operator follows the protocol but may log and analyze all metadata they can see. This is the realistic model for public relays.
-
-### Network observer (passive)
+### Network observer
 
 **Trust level: untrusted**
 
-Any party that can observe network traffic between the sender, receiver, and/or relay. This includes ISPs, Wi-Fi operators, VPN providers, and state-level observers.
+Any party able to observe traffic between the sender, receiver, and relay.
 
 **Capabilities:**
-- Can observe encrypted traffic (timing, size, endpoints)
-- Can perform traffic analysis (correlation of sender/receiver activity)
-- Cannot decrypt content
-- Cannot inject or modify traffic (that's the active attacker)
+- can observe endpoints, timing, and encrypted traffic volume
+- can correlate sender/receiver activity at the network layer
+- cannot read encrypted file contents
 
-### Active attacker (MITM)
+### Active attacker
 
 **Trust level: untrusted**
 
-An attacker who can intercept, modify, inject, or replay traffic on the network path. This is the strongest network-level adversary.
+An attacker who can intercept, modify, inject, or replay traffic on the network path.
 
 **Capabilities:**
-- Everything the passive observer can do
-- Can inject, modify, or replay packets
-- Can attempt to impersonate the sender or receiver
-- Can attempt to brute-force the rendezvous code
-- Can attempt to race the legitimate receiver to claim the code first
-
-### Malicious relay
-
-**Trust level: actively hostile**
-
-A relay operator who deliberately attempts to compromise transfers. This is the relay operator threat model upgraded from honest-but-curious to actively malicious.
-
-**Capabilities:**
-- Everything the relay operator can do
-- Can selectively modify, drop, or replay encrypted frames
-- Can attempt to downgrade the protocol
-- Can present different views to sender and receiver
-- Can attempt to correlate sessions across time
-- Cannot decrypt content (same limitation as honest relay)
+- everything the passive observer can do
+- can inject, modify, or replay packets
+- can attempt to impersonate one side of the transfer
+- can attempt to guess the rendezvous code while the room is still live
 
 ---
 
@@ -95,159 +76,131 @@ A relay operator who deliberately attempts to compromise transfers. This is the 
 ### File content
 
 **Sensitivity: high**
-**Protection: end-to-end encryption (ChaCha20-Poly1305 after Noise XX handshake)**
+**Protection: end-to-end encryption after the Noise handshake**
 
-The primary asset. File content must never be readable by anyone other than the sender and receiver. This includes the relay, the network, and any party that doesn't know the rendezvous code.
+The primary asset. File content should be readable only by the sender and receiver.
 
-### File metadata
+### File metadata inside the transfer protocol
 
 **Sensitivity: medium-high**
-**Protection: encrypted within protocol messages**
+**Protection: encrypted application messages**
 
-File names, sizes, directory structure, modification times, and permissions. This metadata is sent as part of the Offer message, which is encrypted end-to-end. The relay cannot see file metadata.
+File names and other transfer metadata live inside the encrypted channel. The relay does not need to read them.
 
-**Note:** Total transfer size (in encrypted bytes) is visible to the relay and network observers. Individual file sizes are not, since they're bundled into the encrypted stream.
+### Transfer integrity
 
-### Sender and receiver identity
+**Sensitivity: high**
+**Protection: AEAD + final SHA-256 verification**
 
-**Sensitivity: low (explicitly a non-goal)**
-**Protection: none beyond standard IP-level protections**
-
-bore does not hide who is communicating. IP addresses are visible to the relay and to each other (in direct mode). bore is not an anonymity tool — use Tor for that.
-
-### Transfer timing and patterns
-
-**Sensitivity: low**
-**Protection: none**
-
-When transfers happen, how long they take, and their rough size are visible to network observers and the relay. bore does not attempt to hide traffic patterns.
+The transport must detect tampering or corruption in-flight and the receiver must verify the delivered artifact.
 
 ### Rendezvous code
 
-**Sensitivity: high (during its lifetime)**
-**Protection: short-lived, single-use, rate-limited, cryptographically bound**
+**Sensitivity: high during session setup**
+**Protection: short lifetime, user-controlled secrecy, handshake binding**
 
-The code is the shared secret that authorizes and authenticates the transfer. It must remain confidential during its (short) lifetime. After the session completes, the code has no value.
+The code is the shared secret that authorizes a transfer. Anyone who learns it before the legitimate receiver can attempt to claim the session.
+
+### Metadata outside the encrypted channel
+
+**Sensitivity: medium**
+**Protection: limited**
+
+The relay and network can still observe connection timing, rough transfer size, and the IP addresses involved in the relay session.
 
 ---
 
 ## Non-goals
 
-bore explicitly does **not** attempt to provide:
+bore does **not** currently aim to provide:
 
-### Anonymity
-
-bore does not hide who is communicating. Both peers' IP addresses are visible to the relay, and to each other in direct mode. Traffic timing is observable. If you need anonymity, use Tor or a similar system and layer bore on top (which bore does not prevent, but also does not assist).
-
-### Plausible deniability
-
-Transfers are mutually authenticated. Both sides can prove a transfer occurred (they both hold the session key material, transcript, etc.). bore does not provide deniable encryption or off-the-record semantics.
-
-### Multi-party transfer
-
-bore is strictly two-party: one sender, one receiver. Multi-party protocols (e.g., one sender to many receivers) are out of scope and would require fundamentally different key exchange semantics.
-
-### Long-term identity
-
-bore does not maintain persistent identity. There are no user accounts, no contact lists, no trust-on-first-use, no key continuity. Each session is independent. This is a feature, not a limitation — it eliminates key management complexity and long-term credential compromise risks.
-
-### Censorship resistance
-
-bore does not attempt to evade network blocking. The relay can be blocked by IP, domain, or protocol fingerprint. bore does not disguise its traffic as other protocols.
-
-### Protection against malicious file content
-
-bore transfers bytes. It does not inspect, scan, or validate file content. A malicious sender can send malware, and bore will faithfully deliver it. This is the receiver's responsibility to evaluate, same as any file transfer mechanism.
-
-### Protection against endpoint compromise
-
-If the sender or receiver's machine is compromised, bore cannot help. An attacker with access to the filesystem can read files before encryption or after decryption. This is a fundamental limitation of any end-to-end encryption system.
+- anonymity
+- censorship resistance
+- multi-party transfer
+- long-term identity or accounts
+- malware scanning or file-content validation
+- protection against compromised endpoints
+- interruption-safe resumable transfers
 
 ---
 
-## Attack scenarios and mitigations
+## Attack scenarios and current mitigations
 
-### 1. Brute-force the rendezvous code
+### 1. Wrong-code or guessed-code connection attempts
 
-**Attack:** An attacker observes a session being set up (e.g., sees the sender waiting) and tries to guess the code before the legitimate receiver connects.
+**Attack:** An attacker tries to join a live room by guessing the rendezvous code before the intended receiver connects.
 
-**Mitigations:**
-- **Entropy:** Default 3-word code from a 256-word list + channel number = ~34 bits. At 1 attempt/second (relay rate limit), exhaustion takes ~544 years.
-- **Single-use:** Code is consumed on first successful connection. An attacker gets one shot per code.
-- **Expiry:** Codes expire after 5 minutes (default). The window for brute-force is narrow.
-- **Rate limiting:** Relay enforces per-IP rate limits on code attempts.
-- **Configurable:** Users can increase to 4-5 words for sensitive transfers (~42-50 bits).
+**Current mitigations:**
+- the code contributes real entropy to the session secret
+- the relay expires waiting rooms after a bounded lifetime
+- each room is intended for a single sender/receiver pairing
+- users can increase the number of code words for more entropy
 
-**Residual risk:** If the attacker can attempt thousands of connections per second and the relay doesn't rate-limit effectively, the window is wider. But single-use semantics mean only one attempt succeeds.
+**Residual risk:** The relay does not yet implement explicit rate limiting, so online guessing resistance depends on code entropy, room lifetime, and operational context.
 
-### 2. Man-in-the-middle (MITM) attack
+### 2. Man-in-the-middle or handshake tampering
 
-**Attack:** An attacker intercepts the connection between sender and receiver, attempting to negotiate separate sessions with each.
+**Attack:** An attacker intercepts traffic and tries to establish different sessions with each side or alter the handshake in flight.
 
-**Mitigations:**
-- **Noise XX handshake:** Provides mutual authentication with transcript binding. Any modification to handshake messages is detected.
-- **PAKE binding:** The rendezvous code is cryptographically bound to the handshake. An attacker who doesn't know the code cannot complete the handshake with either party.
-- **Transcript hash:** Both parties can verify the handshake transcript. Any divergence means different codes or MITM interference.
+**Current mitigations:**
+- Noise `XXpsk0` authenticates the session setup
+- the rendezvous code is bound into the handshake as a PSK
+- handshake tampering should fail rather than silently downgrade the session
 
-**Residual risk:** If the attacker knows the code (e.g., overheard it), they can attempt to race the legitimate receiver. Single-use semantics and short expiry limit this window. The legitimate receiver would fail to connect, which is detectable.
+**Residual risk:** If an attacker learns the rendezvous code before the intended receiver uses it, they can race the legitimate receiver. That is a limitation of code-based session authorization.
 
-### 3. Relay as MITM
+### 3. Malicious relay behavior
 
-**Attack:** A malicious relay attempts to intercept, modify, or analyze traffic.
+**Attack:** The relay operator logs, delays, drops, or reorders traffic, or attempts to inspect transfer contents.
 
-**Mitigations:**
-- **End-to-end encryption:** All protocol messages and file data are encrypted between sender and receiver. The relay sees only encrypted bytes.
-- **Integrity protection:** AEAD (ChaCha20-Poly1305) detects any modification of encrypted frames. The relay cannot selectively alter content.
-- **No trust required:** The relay does not participate in the key exchange. It cannot inject itself into the Noise handshake.
+**Current mitigations:**
+- application payloads stay end-to-end encrypted
+- authenticated encryption detects modified protected frames
+- the relay does not participate in key derivation
 
-**Residual risk:** The relay can perform traffic analysis (timing, size), denial of service (dropping frames), or selective disruption (dropping specific frame indices). bore detects corrupted or missing frames but cannot prevent relay-level DoS.
+**Residual risk:** The relay can still deny service, learn metadata, and make transfers fail. bore is designed to keep the relay payload-blind, not to make it harmless.
 
-### 4. Replay attack
+### 4. Replay or frame injection
 
-**Attack:** An attacker records encrypted frames and replays them later.
+**Attack:** An attacker captures encrypted traffic and replays it later or injects altered frames.
 
-**Mitigations:**
-- **Counter-based nonces:** Each frame has a monotonically increasing nonce. Replayed frames have duplicate or out-of-order nonces and are rejected.
-- **Session binding:** Frames are encrypted with session-specific keys. Frames from one session cannot be injected into another.
+**Current mitigations:**
+- the secure channel uses session-bound keys
+- frame protection uses authenticated encryption with nonce progression
+- modified ciphertext should fail decryption or integrity checks
 
-### 5. Code interception
+**Residual risk:** Replay protection depends on the current ordered session model. Resume semantics and multi-session artifact handling are not implemented yet.
 
-**Attack:** An attacker intercepts the rendezvous code during out-of-band exchange (e.g., reads a text message, overhears a phone call).
+### 5. Rendezvous code interception
 
-**Mitigations:**
-- **Short lifetime:** Codes expire quickly (5 minutes default).
-- **Single-use:** Once used, the code cannot be reused.
-- **Awareness:** Users are told the code is sensitive and should be shared securely.
+**Attack:** Someone sees the code during out-of-band sharing and tries to join first.
 
-**Residual risk:** If the code is intercepted before the legitimate receiver uses it, the attacker can impersonate the receiver. This is a fundamental limitation of code-based authentication — the security of the code exchange is the user's responsibility.
+**Current mitigations:**
+- the code is meant to be short-lived
+- the handshake fails for peers without the exact code
+- the session is designed around one receiver claiming one room
 
-### 6. Denial of service
+**Residual risk:** Secure code exchange is still the user's responsibility. If the code leaks early, bore cannot distinguish the attacker from the intended receiver.
 
-**Attack:** An attacker floods the relay with connections, exhausts resources, or disrupts ongoing transfers.
+### 6. Relay abuse or resource exhaustion
 
-**Mitigations:**
-- **Rate limiting:** Per-IP and per-room rate limits on the relay.
-- **Room limits:** Maximum concurrent rooms, maximum transfer size, maximum connection duration.
-- **Connection timeouts:** Idle connections are cleaned up.
-- **Self-hosting:** Users can run their own relay, immune to attacks on the public relay.
+**Attack:** A client floods the relay with rooms, connections, or oversized traffic to degrade service.
 
-**Residual risk:** A sufficiently resourced attacker can DoS any relay. Self-hosting and direct P2P connections are the escape hatch.
+**Current mitigations:**
+- room count is bounded by registry configuration
+- waiting rooms expire
+- WebSocket message size is capped
 
-### 7. Resume bait-and-switch
+**Residual risk:** Those are baseline controls, not full abuse protection. Rate limiting, quotas, health visibility, and metrics still need to be added.
 
-**Attack:** An attacker (or compromised sender) changes the files between initial send and resume, hoping the receiver doesn't notice.
+### 7. Malicious files or compromised endpoints
 
-**Mitigations:**
-- **Manifest hash:** The transfer manifest is hashed. On resume, the receiver verifies the manifest hash matches. Any change to file names, sizes, or order is detected.
-- **Per-chunk integrity:** Each chunk is independently verified. Even if the manifest matches, individual chunk corruption is detected.
+**Attack:** The transport succeeds, but one endpoint is already hostile or the file itself is harmful.
 
-### 8. Protocol downgrade
+**Current mitigations:**
+- none at the transport layer beyond preserving file integrity in transit
 
-**Attack:** An attacker or malicious relay attempts to force the peers to use a weaker protocol version.
-
-**Mitigations:**
-- **Version negotiation in handshake:** Protocol version is part of the Noise handshake, which is authenticated. Any tampering with the version is detected.
-- **Strict compatibility:** Currently, versions must match exactly. No fallback to weaker versions.
+**Residual risk:** This is outside bore's security boundary. bore can protect the channel without making the payload safe.
 
 ---
 
@@ -258,7 +211,7 @@ If the sender or receiver's machine is compromised, bore cannot help. An attacke
 │                 Sender's machine                     │
 │                                                     │
 │  ┌─────────────┐    ┌──────────────────────────┐   │
-│  │  Filesystem  │───►│  bore Go client          │   │
+│  │  Filesystem  │───►│  bore client             │   │
 │  │  (plaintext) │    │  (plaintext → encrypted) │   │
 │  └─────────────┘    └──────────┬───────────────┘   │
 │                                │                    │
@@ -274,7 +227,7 @@ If the sender or receiver's machine is compromised, bore cannot help. An attacke
 ┌────────────────────────────────┼────────────────────┐
 │                                │                    │
 │  ┌──────────────────────────┐  │                    │
-│  │  bore Go client          │◄┘                    │
+│  │  bore client             │◄┘                    │
 │  │  (encrypted → plaintext) │                      │
 │  └──────────┬───────────────┘                      │
 │             │                                       │
@@ -287,11 +240,11 @@ If the sender or receiver's machine is compromised, bore cannot help. An attacke
 └─────────────────────────────────────────────────────┘
 ```
 
-**Boundary 1: Sender's machine ↔ Network.** Plaintext exists only on the sender's machine. Once data crosses this boundary, it is encrypted.
+**Boundary 1: sender's machine ↔ network.** Plaintext exists only on the sender's machine before encryption.
 
-**Boundary 2: Network ↔ Receiver's machine.** Encrypted data is decrypted only on the receiver's machine.
+**Boundary 2: network ↔ receiver's machine.** Encrypted data is decrypted only on the receiver's machine.
 
-**Boundary 3: Relay.** The relay sits entirely within the encrypted zone. It handles only encrypted bytes and connection metadata.
+**Boundary 3: relay.** The relay sits inside the encrypted zone and handles only encrypted bytes plus connection metadata.
 
 ---
 
@@ -300,20 +253,19 @@ If the sender or receiver's machine is compromised, bore cannot help. An attacke
 | What | Sender sees | Receiver sees | Relay sees | Network sees |
 |------|:-----------:|:------------:|:----------:|:------------:|
 | File content | Yes | Yes | No | No |
-| File names/sizes | Yes | Yes | No | No |
-| Peer IP address | Receiver's IP (direct) | Sender's IP (direct) | Both IPs | Both IPs |
+| File metadata inside the encrypted channel | Yes | Yes | No | No |
+| Peer IP address | Relay address | Relay address | Both relay clients | Client-to-relay endpoints |
 | Transfer size (bytes) | Yes | Yes | Encrypted total | Encrypted total |
 | Transfer timing | Yes | Yes | Yes | Yes |
-| Rendezvous code | Yes | Yes | Routing only | No |
-| Session ID | Yes | Yes | Room ID | No |
+| Rendezvous code | Yes | Yes | No | No |
+| Room ID | Yes | Yes | Yes | Possibly, if it can inspect relay requests |
 
 ---
 
 ## Recommendations for users
 
-1. **Share codes securely.** The code is the session's security. Don't post it publicly. Voice, encrypted chat, or in-person are best.
-2. **Use more words for sensitive transfers.** `--words 4` or `--words 5` for confidential files.
-3. **Prefer direct connections.** Direct mode reveals fewer metadata to third parties (no relay involvement).
-4. **Self-host relays for organizational use.** If relay metadata exposure matters, run your own.
-5. **Verify transfer completions.** bore reports integrity verification results. Pay attention to them.
-6. **Don't rely on bore for anonymity.** It's not designed for that. Use Tor if you need it.
+1. **Share codes securely.** The code is the session secret.
+2. **Use more words for sensitive transfers.** More words increase entropy.
+3. **Self-host relays when metadata exposure matters.** The relay still sees connection-level metadata.
+4. **Pay attention to transfer completion and integrity output.** Successful delivery should include verification.
+5. **Do not treat bore as an anonymity tool.** It is not designed for that.
