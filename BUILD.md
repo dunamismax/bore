@@ -2,339 +2,344 @@
 
 ## Purpose
 
-This file is the unified execution manual for the bore monorepo.
+This is the execution manual for bore's current rewrite lane.
 
-It covers all components — the Rust client core (bore-core, bore-cli) and the Go network infrastructure (relay, punchthrough, bore-admin). At any point it should answer:
+Use it to answer four questions quickly:
 
-- what each component is trying to become
-- what exists right now
-- what is explicitly not built yet
-- what the next correct move is for each component
-- what must be proven before stronger claims are made
+1. what the repo is actually building now
+2. what is shippable today
+3. what is still legacy baggage
+4. what the next correct move is
 
-This is a living document. When code and docs disagree, fix them together in the same change.
-
----
-
-## Mission
-
-Build a privacy-first file transfer system with:
-
-- **Human-friendly coordination** — short wordlist codes, no accounts, no URLs
-- **End-to-end encryption** — the relay cannot read content, period
-- **Direct-first transport** — LAN and hole-punched WAN before relay fallback
-- **Zero-knowledge relay** — optional, self-hostable, learns nothing about payload
-- **Resumable transfers** — large files survive network interruptions
-- **Composable core** — `bore-core` is a library, not just plumbing for the CLI
-- **Observable infrastructure** — relay monitoring, metrics, and alerting
+If this file and the code disagree, update both in the same change.
 
 ---
 
-## Monorepo structure
+## Current Truth
+
+bore is no longer a Rust-first project.
+
+The active direction is:
+
+- **Go** for the current client, protocol implementation, relay, and network tooling
+- **Zig** for future native/operator-facing tooling only if it clearly earns the complexity
+- **C** only for narrow low-level or FFI cases
+- **Rust** only as temporary legacy reference while the cutover settles
+
+### What is working today
+
+- Go client in `client/` with:
+  - rendezvous code generation/parsing
+  - Noise XXpsk0 handshake
+  - encrypted transfer channel
+  - file send/receive over relay
+  - CLI with `send`, `receive`, `status`, `components`
+- Go relay in `services/relay/`
+- Go NAT probing / hole-punching groundwork in `lib/punchthrough/`
+
+### What is not done yet
+
+- direct transport integrated into the client path
+- resumable transfer state
+- relay hardening and metrics
+- admin surface beyond scaffold
+- full legacy Rust removal
+- doc cleanup for `ARCHITECTURE.md` and `SECURITY.md`
+
+---
+
+## Monorepo Layout
 
 ```text
 bore/
-├── crates/                       # Rust workspace
-│   ├── bore-core/                # transfer engine, crypto, protocol
-│   └── bore-cli/                 # operator CLI
-├── services/                     # Go services
-│   ├── relay/                    # zero-knowledge relay server
-│   └── bore-admin/               # relay monitoring dashboard
-├── lib/                          # Go libraries
-│   └── punchthrough/             # NAT traversal and hole-punching
-└── docs/                         # design documents
+├── client/                  # active Go client rewrite
+├── services/
+│   ├── relay/              # active Go relay service
+│   └── bore-admin/         # scaffolded ops surface
+├── lib/
+│   └── punchthrough/       # NAT probing + hole-punching primitives
+├── crates/                 # legacy Rust reference only
+├── README.md               # public project status
+├── BUILD.md                # this file
+└── REWRITE_TRACKER.md      # rewrite handoff / resume state
 ```
 
-Each Go component has its own `go.mod` for independent dependency management:
-- `services/relay/go.mod` — module `github.com/dunamismax/bore/services/relay`
-- `services/bore-admin/go.mod` — module `github.com/dunamismax/bore/services/bore-admin`
-- `lib/punchthrough/go.mod` — module `github.com/dunamismax/bore/lib/punchthrough`
+---
+
+## Component Snapshots
+
+### `client/` — active Go client
+
+**Status:** working relay-based transfer path
+
+What exists:
+
+- `client/cmd/bore/main.go`
+- rendezvous code model and parsing
+- full code format: `room_id-channel-word-word-word`
+- HKDF-derived PSK from rendezvous code
+- Noise `XXpsk0` handshake
+- secure channel framing over arbitrary `io.ReadWriter`
+- transfer engine with header/chunk/end framing
+- SHA-256 integrity verification
+- WebSocket relay transport
+- end-to-end Go test coverage for code / crypto / engine / transport / rendezvous
+- integration test covering send/receive over a relay-style WebSocket server
+
+What is still missing:
+
+- direct-first transport selection
+- resume support
+- directory transfer
+- transfer history
+- richer progress reporting
+
+### `services/relay/` — active Go relay
+
+**Status:** functional
+
+What exists:
+
+- room registry
+- room state machine
+- WebSocket sender/receiver flow
+- bidirectional frame relay
+- graceful shutdown handling
+- test coverage for room and transport behavior
+
+What is still missing:
+
+- rate limiting
+- health endpoint
+- metrics endpoint
+- resource controls / quotas
+- packaging/service deployment artifacts
+
+### `lib/punchthrough/` — active Go NAT tooling
+
+**Status:** partial, not integrated into the client flow
+
+What exists:
+
+- STUN probing
+- NAT classification
+- UDP hole-punching primitives
+- CLI for probing
+
+What is still missing:
+
+- client integration
+- coordination/signaling path
+- robust real-world test matrix
+
+### `services/bore-admin/` — scaffold
+
+**Status:** truthful placeholder only
+
+What exists:
+
+- module scaffolding
+- placeholder CLI entry point
+
+What is still missing:
+
+- relay polling
+- storage
+- TUI / web UI
+- alerting
+
+### `crates/` — legacy Rust reference
+
+**Status:** frozen
+
+Rules:
+
+- do not add new feature work here
+- use only for protocol comparison, migration confidence, or historical context
+- remove once the Go path is clearly the keeper and docs are fully updated
 
 ---
 
-## Component snapshots
+## Build / Run / Verify
 
-### bore-core / bore-cli (Rust)
+### Prerequisites
 
-**Current phase: Phase 4 — rendezvous and network transport (done)**
+- Go `1.26.1`
+- No top-level `go.work` currently; build and test per module
 
-What exists:
-- Rust workspace with `bore-core` and `bore-cli`
-- CLI with working `send` and `receive` commands over relay
-- Core domain types with serde serialization: session, transfer, protocol, error, code
-- Frame codec for wire-format encoding/decoding
-- Rendezvous code module with 256-word curated wordlist and entropy budget
-- Noise XXpsk0 handshake with PAKE binding to rendezvous code
-- SecureChannel with ChaCha20-Poly1305 AEAD encryption
-- HKDF-SHA256 PSK derivation from rendezvous codes
-- Counter-based nonces with replay detection
-- Multi-segment framing, rekey support, key material zeroization
-- Transfer engine: chunking (256 KiB default), streaming over SecureChannel, SHA-256 integrity verification
-- Binary wire format for header/chunk/end messages (type-tagged, big-endian)
-- Filename validation: path traversal, null bytes, relative components, length limits
-- Transport trait abstracting WebSocket, TCP, and in-process streams
-- WebSocket client transport connecting to Go relay server (via `tokio-tungstenite`)
-- `WsReader`/`WsWriter` adapters bridging WebSocket frames to `AsyncRead`/`AsyncWrite`
-- Rendezvous coordination: full code format (`room_id-channel-word-word-word`)
-- Full sender flow: connect to relay → receive room ID → generate PAKE code → display code → handshake → transfer
-- Full receiver flow: parse code → extract room ID + PAKE → connect to relay → handshake → receive
-- `DuplexTransport` for in-process testing via the `Transport` trait
-- 180 total tests including transport, rendezvous, and integration tests
-- Design docs: threat model, crypto design
-
-What does **not** exist yet:
-- Direct peer-to-peer transport (TCP, QUIC, hole-punching)
-- Resumable session state persistence
-- NAT traversal integration (STUN/TURN, ICE-lite)
-- Progress reporting callbacks during transfer
-
-### relay (Go)
-
-**Current phase: Phase 2 — WebSocket transport (done)**
-
-What exists:
-- Room model with state machine (Waiting → Active → Closed)
-- Thread-safe in-memory registry with TTL reaper
-- WebSocket upgrade handler with sender/receiver routing
-- Bidirectional frame relay with streaming back-pressure
-- Clean close propagation and error handling
-- HTTP server with SIGTERM/SIGINT handling
-- 32 tests (21 room + 11 transport integration)
-
-What does **not** exist yet:
-- Rate limiting or resource management
-- Configuration system (TOML file, CLI flags)
-- Health endpoints or metrics
-- Docker image or systemd unit
-
-### punchthrough (Go)
-
-**Current phase: Phase 2 — UDP hole-punching engine (done)**
-
-What exists:
-- STUN client with NAT type classification via pion/stun v3
-- NAT type detection (Full Cone, Restricted Cone, Port-Restricted Cone, Symmetric)
-- UDP hole-punching engine with simultaneous open strategy
-- 24-byte binary punch protocol (ping/pong/ack)
-- Strategy selection based on NAT type pairs
-- CLI with `probe` and `version` commands
-
-What does **not** exist yet:
-- Coordination protocol (signaling via relay)
-- Probe cache (SQLite)
-- CLI `punch` command
-- Real-world NAT testing beyond loopback
-
-### bore-admin (Go)
-
-**Current phase: Phase 0 — truthful scaffold (done)**
-
-What exists:
-- Go module and placeholder entry point
-
-What does **not** exist yet:
-- Relay health polling
-- SQLite metrics storage
-- Terminal UI or web dashboard
-- Alerting engine
-
----
-
-## Quality gates
-
-### Rust (all phases)
+### Client
 
 ```bash
-cargo check
-cargo test
-cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
+cd client
+go test ./...
+go build ./cmd/bore
 ```
 
-### Go — relay
+### Relay
 
 ```bash
 cd services/relay
-go build ./...
 go test ./...
-go vet ./...
+go build ./cmd/relay
 ```
 
-### Go — punchthrough
+### Punchthrough
 
 ```bash
 cd lib/punchthrough
-go build ./...
 go test ./...
-go vet ./...
+go build ./cmd/punchthrough
 ```
 
-### Go — bore-admin
+### bore-admin
 
 ```bash
 cd services/bore-admin
-go build ./...
-go vet ./...
+go build ./cmd/bore-admin
 ```
 
----
+### Local relay-based smoke flow
 
-## Working rules
+Terminal 1:
 
-1. **Rust for the client, Go for the network layer.** Each language where it fits best.
-2. **Core stays small, explicit, testable.** No IO in the library crate unless behind a trait.
-3. **CLI and docs stay aligned.** The CLI prints what exists, not what's aspirational.
-4. **No security claims before proof.** Don't claim E2E encryption until the crypto is implemented, tested, and reviewed.
-5. **The relay is a dumb pipe.** It forwards bytes. Any logic that inspects payload content is a bug.
-6. **Docs are product surface.** Keep them current. Stale docs are bugs.
-7. **Phase labels stay truthful.** A phase is "done" only when exit criteria are met and verified.
-8. **Tests prove claims.** If a property matters, it has a test. If it doesn't have a test, don't claim it.
-9. **Go modules stay independent.** Each Go component manages its own dependencies.
-10. **Monorepo coherence.** Components are developed together, documented together, released together.
+```bash
+cd services/relay
+RELAY_ADDR=127.0.0.1:8080 go run ./cmd/relay
+```
 
----
+Terminal 2:
 
-## Tracking conventions
+```bash
+cd client
+./bore send ./payload.txt --relay http://127.0.0.1:8080
+```
 
-| Term | Meaning |
-|------|---------|
-| **done** | Implemented and verified |
-| **checked** | Verified by command or test output |
-| **planned** | Intentional, not started |
-| **in-progress** | Actively being worked on |
-| **blocked** | Cannot proceed without a decision or dependency |
-| **risk** | Plausible failure mode that could distort the design |
-| **decision** | A durable call with consequences |
+Terminal 3:
 
----
+```bash
+cd client
+./bore receive <code> --relay http://127.0.0.1:8080
+```
 
-## Source-of-truth mapping
+Expected result:
 
-| File | Owns |
-|------|------|
-| `README.md` | Public-facing project description, honest status |
-| `BUILD.md` | Unified execution manual, phase tracking, decisions |
-| `ARCHITECTURE.md` | Technical design, protocol notes, data flow |
-| `SECURITY.md` | Threat model, security policy, disclosure process |
-| `Cargo.toml` | Rust workspace shape, shared dependency policy |
-| `crates/bore-core/` | Domain types, transfer model, crypto layer, protocol |
-| `crates/bore-cli/` | Operator-facing CLI surface |
-| `services/relay/` | Relay server: room model, WebSocket transport |
-| `services/bore-admin/` | Relay monitoring dashboard |
-| `lib/punchthrough/` | NAT traversal: STUN client, hole-punch engine |
-| `docs/threat-model.md` | Threat model: actors, assets, attack scenarios |
-| `docs/crypto-design.md` | Cryptographic design document |
-
-**Invariant:** If docs, types, and CLI output ever disagree, the next change must reconcile all three.
+- sender prints a full rendezvous code
+- receiver completes successfully
+- sender and receiver SHA-256 values match
+- output file matches input bytes
 
 ---
 
-## Dependency strategy
+## Verification Performed In This Recovery Pass
 
-### Rust dependencies (current)
+Completed on 2026-03-23:
 
-| Crate | Purpose | Phase |
-|-------|---------|-------|
-| `tokio-tungstenite` | WebSocket client for relay connection | 4 |
-| `futures-util` | Stream/Sink traits for WebSocket adapter | 4 |
-| `url` | URL parsing for relay URLs | 4 |
-| `snow` | Noise Protocol XXpsk0 handshake + ChaCha20-Poly1305 transport | 2 |
-| `hkdf` + `sha2` | HKDF-SHA256 PSK derivation; SHA-256 transfer integrity | 2, 3 |
-| `zeroize` | Key material cleanup on drop | 2 |
-| `rand` | CSPRNG for keypair generation | 2 |
-| `tokio` | Async runtime for handshake IO and networking | 2 |
-| `serde` + `serde_json` | Serialization for protocol messages | 1 |
-| `tracing` + `tracing-subscriber` | Structured observability | 1 |
-| `thiserror` | Typed errors in core | 1 |
-| `anyhow` | Error handling in CLI | 0 |
-| `clap` | CLI argument parsing | 0 |
+```bash
+cd client && go test ./...
+cd client && go build ./cmd/bore
+```
 
-### Go dependencies (current)
+Manual smoke completed against the **real Go relay** on `127.0.0.1:18080`:
 
-| Module | Component | Purpose |
-|--------|-----------|---------|
-| `nhooyr.io/websocket` | relay | WebSocket transport |
-| `github.com/pion/stun/v3` | punchthrough | STUN binding request/response |
-| `github.com/pion/transport/v4` | punchthrough | Transitive dep of pion/stun |
+- `bore send <file> --relay http://127.0.0.1:18080`
+- `bore receive <code> --relay http://127.0.0.1:18080`
+- byte-for-byte file comparison succeeded
+- SHA-256 matched on both sides
+
+Important bug fixed during verification:
+
+- CLI flag parsing now supports both positional-first and flag-first usage for `send` and `receive`
 
 ---
 
-## Immediate next moves
+## Working Rules
 
-### bore-core — Phase 5: direct peer-to-peer transport
-1. TCP transport implementation behind the `Transport` trait
-2. LAN peer discovery (mDNS or broadcast)
-3. Attempt direct connection before relay fallback
-4. Transport selection logic (direct vs relayed)
-
-### relay — Phase 3: rate limiting
-1. Per-IP rate limiting for room creation
-2. Max concurrent rooms with 503 on limit
-3. Max transfer size per room
-4. Connection TTLs and idle timeouts
-
-### punchthrough — Phase 3: coordination protocol
-1. Define minimal signaling protocol
-2. Run signaling over WebSocket to relay
-3. Integration test with mock signaling server
-
-### bore-admin — Phase 1: relay health polling
-1. Define metrics model (RelaySnapshot, HealthStatus)
-2. Implement HTTP poller for relay's /health endpoint
-3. Initialize SQLite storage with schema creation
-4. Wire into CLI with --relay flag
+1. **No new Rust architecture work.**
+2. **Keep the relay payload-blind.** If it can inspect file contents, the design regressed.
+3. **Treat the rendezvous code as cryptographic input, not just a locator.**
+4. **Prefer direct-first eventually, but do not lie about current capability.** Right now the reliable verified path is relay-based.
+5. **Keep docs honest.** Aspirational language belongs in planned sections, not current-state summaries.
+6. **Run the narrowest meaningful verification first.** Broaden only when the change surface demands it.
+7. **If you touch migration assumptions, update `REWRITE_TRACKER.md` in the same pass.**
 
 ---
 
-## Decisions
+## Immediate Next Moves
 
-### decision: Rust + Go monorepo
-Rust handles the hard problems: crypto, file chunking, integrity verification, transport abstraction. Go handles the network infrastructure: relay server (goroutine-per-room concurrency), NAT traversal (concurrent UDP probes), monitoring (bubbletea TUI). Each language where it fits best, in one repo for coherent development.
+### Highest leverage path
 
-### decision: Independent Go modules
-Each Go component has its own `go.mod`. This keeps dependency trees independent (relay doesn't need pion/stun, punchthrough doesn't need websocket), enables independent builds, and avoids a top-level `go.work` that would couple versioning.
+1. settle whether `client/` is the permanent shipped CLI or an intermediate step before a Zig-facing frontend
+2. integrate `lib/punchthrough/` into the client transport selection path
+3. add resumable transfer state
+4. add relay rate limiting + health/metrics
+5. promote `bore-admin` from scaffold to useful operator surface
 
-### decision: WebSocket relay transport
-Firewall-friendly (port 443), works behind reverse proxies, bidirectional binary framing. The relay is a dumb pipe — it doesn't need sophisticated protocol support.
+### If the goal is cleanup instead of features
 
-### decision: Noise XXpsk0 for key exchange
-Mutual authentication without pre-shared keys, PAKE binding to rendezvous codes via HKDF-derived PSK. The short code is a cryptographic input, not just a routing hint.
-
----
-
-## Progress log
-
-### 2026-03-22
-
-- Monorepo established with bore-core (Rust Phase 2), bore-cli (Rust Phase 2)
-- Phases 0-2 complete for bore-core: domain types, protocol design, cryptographic layer
-- Relay merged from standalone repo: Phases 0-2 complete (room model, WebSocket transport, 32 tests)
-- Punchthrough merged from standalone repo: Phases 0-2 complete (STUN client, hole-punch engine)
-- bore-admin merged from standalone repo: Phase 0 complete (scaffold)
-- All components compile: `cargo check` ✓, `go build ./...` ✓ for all Go modules
-- Module paths updated to monorepo scheme
-- Unified README and BUILD manual written
-- Phase 3 complete for bore-core: transfer engine with chunking, streaming, SHA-256 integrity verification
-- Transfer engine: binary wire format (header/chunk/end), 256 KiB chunks, filename validation
-- 159 total tests (12 new error-path and boundary-condition tests for the transfer engine)
-- All quality gates pass: cargo test ✓, clippy ✓, fmt ✓, cargo check for bore-cli ✓
-- Updated lib.rs project snapshot, BUILD.md, README.md to reflect Phase 3 completion
-
-- Phase 4 complete for bore-core: rendezvous and network transport
-- Transport trait (`Transport`) abstracting WebSocket, TCP, and in-process streams
-- WebSocket client transport (`WebSocketTransport`) via `tokio-tungstenite`
-- `WsReader`/`WsWriter` adapters bridging WebSocket frames to `AsyncRead`/`AsyncWrite`
-- Rendezvous coordination module: `FullRendezvousCode` format (`room_id-channel-word-word-word`)
-- Full sender flow: connect to relay → receive room ID → generate PAKE code → handshake → transfer
-- Full receiver flow: parse code → connect to relay with room ID → handshake → receive
-- `DuplexTransport` for in-process testing fitting the `Transport` trait
-- Working CLI `send` and `receive` commands (bore-cli Phase 4)
-- New dependencies: `tokio-tungstenite`, `futures-util`, `url`
-- 180 total tests (21 new: 6 URL building, 4 duplex transport, 11 rendezvous code parsing/generation)
-- All quality gates pass: cargo test ✓, clippy ✓, fmt ✓, cargo check ✓
-- Go components verified: relay build ✓, relay tests ✓, punchthrough build ✓, bore-admin build ✓
-- Updated lib.rs project snapshot, BUILD.md, README.md to reflect Phase 4 completion
+1. rewrite `ARCHITECTURE.md` around the Go client reality
+2. rewrite `SECURITY.md` to stop implying Rust is active architecture
+3. remove `crates/`, `Cargo.toml`, and `Cargo.lock` once Stephen is satisfied the Rust reference is no longer needed
 
 ---
 
-*Update this log only with things that actually happened.*
+## Risks And Open Questions
+
+### Risk: legacy Rust still confuses the repo story
+
+Mitigation:
+- keep README / BUILD / tracker explicit that Rust is frozen
+- remove Rust once confidence is high enough
+
+### Risk: punchthrough exists but is not integrated
+
+Mitigation:
+- avoid marketing bore as direct-first today
+- describe direct transport as the next implementation target, not current capability
+
+### Risk: no resumable state yet
+
+Mitigation:
+- keep transfer claims modest
+- add checkpoint model before claiming interruption recovery
+
+### Open question: where Zig actually belongs
+
+The repo direction is Zig / Go / C only, but no Zig implementation should land just for aesthetic symmetry. Use it only where it clearly improves:
+
+- packaging
+- native UX
+- local operator tools
+- distribution simplicity
+
+If the Go client keeps shipping cleanly and does not impose real pain, do not force a second frontend prematurely.
+
+---
+
+## Removal Gate For Legacy Rust
+
+Do not remove the Rust reference until all are true:
+
+- [x] Go client compiles
+- [x] Go client tests pass
+- [x] Go client succeeds in real relay smoke testing
+- [ ] transport roadmap is stable enough that the Rust reference is no longer needed
+- [ ] `ARCHITECTURE.md` and `SECURITY.md` are rewritten to match the new world
+- [ ] Stephen explicitly wants the cleanup landed
+
+---
+
+## Resume Checklist
+
+If you are resuming this repo later, do this in order:
+
+1. read `README.md`
+2. read this file
+3. read `REWRITE_TRACKER.md`
+4. inspect `git status`
+5. treat `client/` as the active client
+6. choose one lane only:
+   - direct transport integration
+   - resume support
+   - relay hardening
+   - legacy Rust removal
+7. run focused verification before and after the change

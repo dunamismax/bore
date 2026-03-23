@@ -3,11 +3,16 @@
 Cargo.lock.bak
 
 # Go
+/client/bore
 /services/relay/relay
 /services/bore-admin/bore-admin
 /lib/punchthrough/punchthrough
 *.test
 vendor/
+
+# Local agent/worktree artifacts
+.claude/
+.claire/
 
 # SQLite
 *.db
