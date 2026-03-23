@@ -12,11 +12,12 @@ Implemented today:
 - SHA-256 file integrity verification in the transfer engine
 - payload-blind relay forwarding in `services/relay/`
 - room expiry and bounded in-memory room tracking in the relay
+- relay `/healthz` and `/status` endpoints that expose aggregate operator data only
 
 Important limits on those claims:
 
 - the currently verified path is **relay-based**, not direct peer-to-peer
-- the relay is functional but not yet hardened with rate limiting, health endpoints, or metrics
+- the relay is functional but not yet hardened with rate limiting or metrics
 - the system has **not** had an external security audit yet
 - resumable transfer behavior is not implemented yet
 - bore is **not** an anonymity tool
@@ -76,6 +77,18 @@ Implemented relay guardrails are modest but real:
 
 These are baseline resource controls, not a substitute for proper abuse protection.
 
+### Operator endpoints
+
+The relay now exposes `/healthz` and `/status` for basic operator visibility.
+Those endpoints are intended to reveal only aggregate service state such as:
+
+- process health
+- relay uptime
+- room counts by state
+- configured room/transport limits
+
+They should not expose plaintext payloads, rendezvous codes, or per-transfer decrypted metadata.
+
 ---
 
 ## Threat model summary
@@ -121,9 +134,9 @@ bore does **not** currently aim to provide:
 Not yet implemented:
 
 - rate limiting
-- health endpoint
 - metrics endpoint
 - stronger operator controls / quotas
+- longer-term relay observation/history tooling
 
 This means the relay should be treated as functional but not yet production-hardened against abuse or observability requirements.
 

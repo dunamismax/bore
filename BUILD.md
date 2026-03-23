@@ -8,7 +8,7 @@ Use it to answer four questions quickly:
 
 1. what the repo is actually building now
 2. what is shippable today
-3. what is still scaffold or TODO
+3. what is still limited or TODO
 4. what the next correct move is
 
 If this file and the code disagree, fix both in the same change.
@@ -20,9 +20,9 @@ If this file and the code disagree, fix both in the same change.
 bore currently ships a **relay-based encrypted file transfer path** built from four tracked components:
 
 - **`client/`** — user-facing CLI for rendezvous, handshake, and encrypted file transfer
-- **`services/relay/`** — WebSocket relay that pairs peers and forwards encrypted frames
+- **`services/relay/`** — WebSocket relay that pairs peers, forwards encrypted frames, and exposes operator health/status endpoints
 - **`lib/punchthrough/`** — NAT probing and hole-punching groundwork for a future direct path
-- **`services/bore-admin/`** — truthful scaffold for future relay operations tooling
+- **`services/bore-admin/`** — minimal operator CLI for relay status polling
 
 ### What is working today
 
@@ -32,9 +32,11 @@ bore currently ships a **relay-based encrypted file transfer path** built from f
   - encrypted transfer channel
   - file send/receive over relay
   - CLI with `send`, `receive`, `status`, and `components`
-- relay in `services/relay/`
+- relay in `services/relay/` with:
+  - WebSocket room brokering
+  - `/healthz` and `/status` operator endpoints
 - NAT probing / hole-punching groundwork in `lib/punchthrough/`
-- truthful scaffold for `services/bore-admin/`
+- `bore-admin` CLI in `services/bore-admin/` for relay status polling
 
 ### What is not done yet
 
@@ -42,8 +44,8 @@ bore currently ships a **relay-based encrypted file transfer path** built from f
 - resumable transfers
 - directory transfer
 - relay rate limiting / quotas / operational controls
-- health and metrics endpoints on the relay
-- admin surface beyond scaffold
+- metrics endpoint on the relay
+- admin surface beyond status polling
 - broader security review and operational hardening
 
 ---
@@ -55,13 +57,12 @@ bore/
 ├── client/                  # active Go client
 ├── services/
 │   ├── relay/               # active Go relay service
-│   └── bore-admin/          # truthful scaffold only
+│   └── bore-admin/          # minimal operator CLI
 ├── lib/
 │   └── punchthrough/        # NAT probing + hole-punching primitives
 ├── docs/                    # design and threat-model docs
 ├── README.md                # public project status
-├── BUILD.md                 # this file
-├── REWRITE_TRACKER.md       # handoff / resume state
+├── BUILD.md                 # execution manual and TODO ledger
 ├── ARCHITECTURE.md          # current architecture description
 └── SECURITY.md              # current security posture
 ```
@@ -107,13 +108,13 @@ What exists:
 - WebSocket sender/receiver flow
 - bidirectional frame relay
 - room TTL reaper
+- `/healthz` and `/status` endpoints for operator visibility
 - graceful shutdown handling
 - tests for room and transport behavior
 
 What is still missing:
 
 - explicit rate limiting
-- health endpoint
 - metrics endpoint
 - stronger operator-facing resource controls
 - deployment/service packaging artifacts
@@ -135,23 +136,23 @@ What is still missing:
 - coordination/signaling path
 - broader real-world network validation
 
-### `services/bore-admin/` — scaffold
+### `services/bore-admin/` — operator CLI
 
-**Status:** truthful placeholder only
+**Status:** active, minimal
 
 What exists:
 
-- Go module scaffolding
-- placeholder CLI entry point
-- explicit statement of what is not built yet
+- Go module with a usable `status` command
+- HTTP polling of the relay `/status` endpoint
+- human-readable output for uptime, room counts, and relay limits
 
 What is still missing:
 
-- relay polling
-- storage
+- persistent storage
 - TUI / web UI
 - alerting
-- configuration system
+- configuration profiles
+- metrics/history views
 
 ---
 
@@ -191,6 +192,13 @@ go build ./cmd/punchthrough
 ```bash
 cd services/bore-admin
 go build ./cmd/bore-admin
+```
+
+### bore-admin status check
+
+```bash
+cd services/bore-admin
+go run ./cmd/bore-admin status --relay http://127.0.0.1:8080
 ```
 
 ### Local relay-based smoke flow
@@ -253,7 +261,7 @@ cd services/relay && go test ./... && go build ./cmd/relay
 cd lib/punchthrough && go test ./... && go build ./cmd/punchthrough
 ```
 
-### Admin scaffold changes
+### Admin CLI changes
 
 ```bash
 cd services/bore-admin && go build ./cmd/bore-admin
@@ -273,7 +281,7 @@ Run every affected module command above, then verify the docs still match the co
 4. **Keep docs honest.** Aspirational language belongs in planned sections, not current-state summaries.
 5. **Avoid speculative new surfaces.** Add new tooling only when it solves a real operator or transport problem.
 6. **Run the narrowest meaningful verification first.** Broaden only when the change surface demands it.
-7. **If you change architecture or security claims, update `REWRITE_TRACKER.md`, `ARCHITECTURE.md`, and `SECURITY.md` in the same pass.**
+7. **If you change architecture or security claims, update `BUILD.md`, `ARCHITECTURE.md`, and `SECURITY.md` in the same pass.**
 
 ---
 
@@ -283,15 +291,15 @@ Run every affected module command above, then verify the docs still match the co
 
 1. integrate `lib/punchthrough/` into client transport selection
 2. add resumable transfer state
-3. add relay rate limiting + health/metrics
-4. promote `bore-admin` from scaffold to useful operator surface
+3. add relay rate limiting + metrics
+4. deepen `bore-admin` beyond status polling into a broader operator surface
 5. keep documentation aligned as those features land
 
 ### If the goal is cleanup instead of features
 
 1. tighten docs around the relay-based path and current limits
 2. remove claims that imply direct transport is already present
-3. keep scaffold modules clearly labeled until they grow real behavior
+3. keep minimal operator tooling clearly scoped to what it actually does
 4. trim stale commentary that does not help a future maintainer ship the next step
 
 ---
@@ -314,16 +322,16 @@ Mitigation:
 
 Mitigation:
 - treat the current relay as functional, not production-hardened
-- add rate limiting, quotas, health, and metrics before making stronger deployment claims
+- keep using the existing health/status endpoints for visibility, then add rate limiting, quotas, and metrics before making stronger deployment claims
 
 ### Open question: how broad the operator surface should become
 
-Useful first steps are clear:
+Useful next steps are clear:
 
-- relay health polling
-- storage for relay observations
-- simple operator views
-- alerting/configuration basics
+- persist relay observations over time
+- add simple operator views beyond the single status summary
+- add alerting/configuration basics
+- decide whether metrics should live in the relay, the admin tool, or both
 
 Avoid overbuilding beyond what the relay actually needs.
 
@@ -335,7 +343,7 @@ If you are resuming this repo later, do this in order:
 
 1. read `README.md`
 2. read this file
-3. read `REWRITE_TRACKER.md`
+3. read `ARCHITECTURE.md` and `SECURITY.md` if the task touches behavior or claims
 4. inspect `git status`
 5. treat `client/` as the active client
 6. pick one lane only:

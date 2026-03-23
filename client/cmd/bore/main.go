@@ -74,7 +74,7 @@ func main() {
 	case "components":
 		printComponents()
 	case "history":
-		fmt.Fprintln(os.Stderr, "bore history is not yet implemented (planned for Phase 7)")
+		fmt.Fprintln(os.Stderr, "bore history is not yet implemented")
 		os.Exit(1)
 	case "relay":
 		fmt.Fprintln(os.Stderr, "bore relay is not yet implemented -- use the Go relay server")
@@ -234,8 +234,7 @@ func printStatus() {
 	fmt.Println("====")
 	fmt.Println()
 	fmt.Println("  version: " + version)
-	fmt.Println("  phase:   5 (Go rewrite)")
-	fmt.Println("  status:  active development")
+	fmt.Println("  status:  relay-based encrypted file transfer")
 	fmt.Println("  mission: privacy-first file transfer. no accounts, no cloud, no trust required.")
 	fmt.Println()
 	fmt.Println("  implemented:")
@@ -343,7 +342,7 @@ var components = []component{
 	},
 	{
 		"bore-admin",
-		"scaffold",
-		"Go admin dashboard: relay monitoring, metrics (Phase 6+)",
+		"active",
+		"Go operator CLI: relay status polling over the relay /status endpoint",
 	},
 }

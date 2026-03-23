@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -34,6 +36,56 @@ func testServer(t *testing.T) (*Server, *httptest.Server) {
 // wsURL converts an httptest.Server URL to a WebSocket URL with optional query params.
 func wsURL(ts *httptest.Server, path string) string {
 	return "ws" + strings.TrimPrefix(ts.URL, "http") + path
+}
+
+func httpGetJSON[T any](t *testing.T, url string) T {
+	t.Helper()
+
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s: status = %d, want %d", url, resp.StatusCode, http.StatusOK)
+	}
+
+	var decoded T
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		t.Fatalf("decode %s: %v", url, err)
+	}
+	return decoded
+}
+
+func TestRelay_StatusEndpoints(t *testing.T) {
+	_, ts := testServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	health := httpGetJSON[healthResponse](t, ts.URL+"/healthz")
+	if health.Service != "bore-relay" || health.Status != "ok" {
+		t.Fatalf("health = %+v, want service bore-relay / status ok", health)
+	}
+
+	status := httpGetJSON[statusResponse](t, ts.URL+"/status")
+	if status.Service != "bore-relay" || status.Status != "ok" {
+		t.Fatalf("status = %+v, want service bore-relay / status ok", status)
+	}
+	if status.Rooms.Total != 0 || status.Rooms.Waiting != 0 || status.Rooms.Active != 0 {
+		t.Fatalf("empty relay status = %+v, want zero rooms", status.Rooms)
+	}
+	if status.Limits.MaxMessageSizeBytes != maxMessageSize {
+		t.Fatalf("max message size = %d, want %d", status.Limits.MaxMessageSizeBytes, maxMessageSize)
+	}
+
+	sender, _ := dialSender(t, ctx, ts)
+	defer sender.CloseNow()
+
+	status = httpGetJSON[statusResponse](t, ts.URL+"/status")
+	if status.Rooms.Total != 1 || status.Rooms.Waiting != 1 || status.Rooms.Active != 0 {
+		t.Fatalf("waiting relay status = %+v, want total=1 waiting=1 active=0", status.Rooms)
+	}
 }
 
 // dialSender connects as a sender and returns the WebSocket conn and the room ID.

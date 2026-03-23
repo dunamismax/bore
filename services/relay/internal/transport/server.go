@@ -1,19 +1,21 @@
 // Package transport implements the WebSocket relay transport layer.
 //
-// The server exposes a single /ws endpoint. Senders connect without a
-// room query parameter to create a new room; the server replies with
+// The server exposes a /ws endpoint for peer connections plus lightweight
+// /healthz and /status endpoints for operator visibility. Senders connect
+// without a room query parameter to create a new room; the server replies with
 // the room ID as the first text message. Receivers connect with
-// ?room=ROOM_ID to join an existing room. Once both peers are
-// connected, the server relays WebSocket frames bidirectionally
-// without inspection.
+// ?room=ROOM_ID to join an existing room. Once both peers are connected, the
+// server relays WebSocket frames bidirectionally without inspection.
 package transport
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/dunamismax/bore/services/relay/internal/room"
 	"nhooyr.io/websocket"
@@ -29,6 +31,7 @@ type Server struct {
 	registry *room.Registry
 	httpSrv  *http.Server
 	logger   *slog.Logger
+	started  time.Time
 
 	mu      sync.Mutex
 	pending map[string]*peerState
@@ -57,10 +60,13 @@ func NewServer(cfg ServerConfig) *Server {
 	s := &Server{
 		registry: cfg.Registry,
 		logger:   cfg.Logger,
+		started:  time.Now(),
 		pending:  make(map[string]*peerState),
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", s.handleHealth)
+	mux.HandleFunc("/status", s.handleStatus)
 	mux.HandleFunc("/ws", s.handleWS)
 
 	s.httpSrv = &http.Server{
@@ -89,6 +95,67 @@ func (s *Server) Serve(ln net.Listener) error {
 // Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpSrv.Shutdown(ctx)
+}
+
+type healthResponse struct {
+	Service string `json:"service"`
+	Status  string `json:"status"`
+}
+
+type statusResponse struct {
+	Service       string       `json:"service"`
+	Status        string       `json:"status"`
+	UptimeSeconds int64        `json:"uptimeSeconds"`
+	Rooms         statusRooms  `json:"rooms"`
+	Limits        statusLimits `json:"limits"`
+}
+
+type statusRooms struct {
+	Total   int `json:"total"`
+	Waiting int `json:"waiting"`
+	Active  int `json:"active"`
+}
+
+type statusLimits struct {
+	MaxRooms            int   `json:"maxRooms"`
+	RoomTTLSeconds      int64 `json:"roomTTLSeconds"`
+	ReapIntervalSeconds int64 `json:"reapIntervalSeconds"`
+	MaxMessageSizeBytes int64 `json:"maxMessageSizeBytes"`
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, healthResponse{
+		Service: "bore-relay",
+		Status:  "ok",
+	})
+}
+
+func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
+	snapshot := s.registry.Snapshot()
+
+	writeJSON(w, http.StatusOK, statusResponse{
+		Service:       "bore-relay",
+		Status:        "ok",
+		UptimeSeconds: int64(time.Since(s.started).Seconds()),
+		Rooms: statusRooms{
+			Total:   snapshot.TotalRooms,
+			Waiting: snapshot.WaitingRooms,
+			Active:  snapshot.ActiveRooms,
+		},
+		Limits: statusLimits{
+			MaxRooms:            snapshot.MaxRooms,
+			RoomTTLSeconds:      int64(snapshot.RoomTTL.Seconds()),
+			ReapIntervalSeconds: int64(snapshot.ReapInterval.Seconds()),
+			MaxMessageSizeBytes: maxMessageSize,
+		},
+	})
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
 }
 
 // handleWS routes WebSocket connections to sender or receiver handlers

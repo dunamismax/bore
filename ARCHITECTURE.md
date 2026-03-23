@@ -37,7 +37,7 @@ bore currently consists of four tracked components:
 1. **Client (`client/`)** generates or parses a rendezvous code, performs the Noise handshake, and streams encrypted file data.
 2. **Relay (`services/relay/`)** pairs sender and receiver and forwards encrypted frames over WebSockets.
 3. **Punchthrough (`lib/punchthrough/`)** contains STUN and UDP hole-punching primitives for a future direct path.
-4. **bore-admin (`services/bore-admin/`)** is scaffold-only and does not yet participate in runtime behavior.
+4. **bore-admin (`services/bore-admin/`)** is a minimal operator CLI that queries relay status but does not participate in transfer runtime behavior.
 
 The current verified path is **relay-based transfer**. Direct transport is still a planned integration step, not current runtime behavior.
 
@@ -68,7 +68,7 @@ lib/punchthrough/
     └── stun/                 # STUN client and message handling
 
 services/bore-admin/
-└── cmd/bore-admin/           # truthful scaffold placeholder
+└── cmd/bore-admin/           # minimal operator CLI
 ```
 
 ---
@@ -219,6 +219,7 @@ Owns:
 - WebSocket accept/upgrade path
 - sender and receiver connection handling
 - frame relay between paired peers
+- lightweight `/healthz` and `/status` operator endpoints
 
 Design constraints:
 
@@ -229,8 +230,8 @@ Design constraints:
 Current limitations:
 
 - no explicit rate limiting yet
-- no health endpoint yet
 - no metrics endpoint yet
+- operator visibility is still limited to lightweight health/status summaries
 
 ---
 
@@ -270,21 +271,22 @@ Near-term architectural goal:
 
 ## Admin Surface (`services/bore-admin/`)
 
-This module is intentionally only a scaffold today.
+This module is now a small but real operator CLI.
 
 What it is:
 
-- a Go module with a placeholder CLI entry point
-- a place to land relay monitoring and operator workflows later
+- a Go CLI that queries the relay `/status` endpoint
+- a human-readable status summary for relay uptime, room counts, and limits
+- a place to grow additional relay monitoring and operator workflows later
 
 What it is not:
 
-- a working dashboard
-- a metrics system
+- a dashboard
+- a metrics/history system
 - a storage layer
 - an operational dependency of the relay or client
 
-Keep docs honest: treat this module as a placeholder until real features exist.
+Keep docs honest: treat this module as minimal operator tooling until it grows beyond status polling.
 
 ---
 
@@ -342,7 +344,7 @@ This selection logic is planned, not current behavior.
 2. **Relay stays payload-blind.**
 3. **Rendezvous code is cryptographic input, not cosmetic metadata.**
 4. **Direct transport is optional architecture, not a precondition for shipping the relay path.**
-5. **Scaffolds stay clearly labeled until they carry real workload.**
+5. **Minimal tools stay clearly labeled until they carry broader workload.**
 
 ---
 
@@ -350,7 +352,7 @@ This selection logic is planned, not current behavior.
 
 - integrate punchthrough into client transport selection
 - add resumable transfer state and resume protocol rules
-- harden relay operations with rate limiting, health, and metrics
-- decide how much operator surface bore-admin actually needs before it grows beyond a scaffold
+- harden relay operations with rate limiting and metrics
+- decide how much operator surface bore-admin actually needs beyond relay status polling
 
 For the current execution plan and verification commands, see [BUILD.md](BUILD.md). For security claims and limits, see [SECURITY.md](SECURITY.md).

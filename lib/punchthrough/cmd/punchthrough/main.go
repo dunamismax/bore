@@ -63,7 +63,7 @@ Probe flags:
 
 func cmdVersion() {
 	fmt.Printf("punchthrough %s\n", version)
-	fmt.Printf("Phase 1: STUN client and NAT discovery\n")
+	fmt.Printf("status: STUN probing and NAT discovery CLI\n")
 }
 
 func cmdProbe(args []string) error {

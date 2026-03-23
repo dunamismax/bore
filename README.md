@@ -11,7 +11,7 @@ bore moves a file between two machines with a short human-readable rendezvous co
 - the active client lives in `client/` and is implemented in **Go**
 - the relay lives in `services/relay/` and is implemented in **Go**
 - NAT tooling lives in `lib/punchthrough/` and is implemented in **Go**
-- `services/bore-admin/` is a scaffold, not a real admin surface yet
+- `services/bore-admin/` is a minimal operator CLI for relay health and status checks
 - the verified transfer path today is **relay-based**, not direct peer-to-peer
 
 ## What works today
@@ -22,6 +22,8 @@ bore moves a file between two machines with a short human-readable rendezvous co
 - ChaCha20-Poly1305 encrypted transfer channel
 - SHA-256 file integrity verification
 - self-hostable WebSocket relay in `services/relay/`
+- relay `/healthz` and `/status` operator endpoints
+- `bore-admin status` relay polling in `services/bore-admin/`
 - standalone NAT probing and hole-punching groundwork in `lib/punchthrough/`
 
 ## What is still next
@@ -29,8 +31,8 @@ bore moves a file between two machines with a short human-readable rendezvous co
 - direct transport wired into the client path
 - resumable transfers
 - directory transfer
-- relay rate limiting, health endpoints, and metrics
-- admin tooling beyond scaffold status
+- relay rate limiting and metrics
+- deeper admin tooling beyond relay status polling
 - broader security hardening and external review
 
 ## Components
@@ -40,7 +42,7 @@ bore moves a file between two machines with a short human-readable rendezvous co
 | `bore` client | `client/` | active | Rendezvous, handshake, encrypted transfer, CLI |
 | `relay` | `services/relay/` | active | WebSocket room broker for encrypted payload forwarding |
 | `punchthrough` | `lib/punchthrough/` | active but not integrated | NAT probing and UDP hole-punching primitives |
-| `bore-admin` | `services/bore-admin/` | scaffold | Future relay monitoring and operator tooling |
+| `bore-admin` | `services/bore-admin/` | active | Minimal operator CLI for relay health and status polling |
 
 ## Quick start
 
@@ -65,7 +67,14 @@ cd services/relay
 RELAY_ADDR=127.0.0.1:8080 go run ./cmd/relay
 ```
 
-### 4. Send a file
+### 4. Check relay status (optional)
+
+```bash
+cd services/bore-admin
+go run ./cmd/bore-admin status --relay http://127.0.0.1:8080
+```
+
+### 5. Send a file
 
 ```bash
 cd client
@@ -83,7 +92,7 @@ Relay: http://127.0.0.1:8080
 Waiting for receiver...
 ```
 
-### 5. Receive the file on the other machine
+### 6. Receive the file on the other machine
 
 ```bash
 cd client
@@ -116,7 +125,7 @@ go test ./...
 go build ./cmd/punchthrough
 ```
 
-### bore-admin scaffold
+### bore-admin
 
 ```bash
 cd services/bore-admin
@@ -137,7 +146,7 @@ go build ./cmd/bore-admin
 │       └── transport/
 ├── services/
 │   ├── relay/               # active Go relay service
-│   └── bore-admin/          # truthful scaffold only
+│   └── bore-admin/          # minimal operator CLI
 ├── lib/
 │   └── punchthrough/        # NAT tooling
 ├── docs/
@@ -145,7 +154,6 @@ go build ./cmd/bore-admin
 │   └── threat-model.md
 ├── ARCHITECTURE.md
 ├── BUILD.md
-├── REWRITE_TRACKER.md
 └── SECURITY.md
 ```
 
@@ -155,7 +163,7 @@ go build ./cmd/bore-admin
 - integrate `lib/punchthrough/` into transport selection
 - add resumable transfer state
 - harden relay operations and observability
-- turn `services/bore-admin/` into useful operator tooling
+- deepen `services/bore-admin/` beyond status polling
 
 ## Notes
 
@@ -164,4 +172,4 @@ go build ./cmd/bore-admin
 - The codebase currently ships one reliable transfer path. Treat direct transport as planned work until it is integrated and verified.
 - If docs and code disagree, the docs are stale. Fix both in the same change.
 
-For the execution manual and current tracker, start with [`BUILD.md`](BUILD.md) and [`REWRITE_TRACKER.md`](REWRITE_TRACKER.md).
+For the execution manual and current TODO lane, start with [`BUILD.md`](BUILD.md).
