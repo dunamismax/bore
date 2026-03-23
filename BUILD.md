@@ -295,6 +295,50 @@ Checklist:
 - [ ] add useful historical/operator views only if they solve a real relay problem
 - [ ] add alerting/config basics without turning bore into a control-plane platform
 
+### Phase 5 — tech stack alignment
+
+**Status:** planned
+
+This phase closes the gap between the current codebase and the standard Go service baseline. Each item is directly motivated by a concrete gap in bore's tooling, CI, or relay operation -- not by general software idealism.
+
+**CI pipeline:**
+
+- [ ] add `.github/workflows/ci.yml` that runs `go test ./...` for all four modules (`client/`, `services/relay/`, `services/bore-admin/`, `lib/punchthrough/`) on push and PR
+- [ ] add `golangci-lint run` to the CI workflow for each module
+- [ ] add `govulncheck ./...` to the CI workflow for each module
+
+**Linting config:**
+
+- [ ] add a root `.golangci.yml` with `govet`, `staticcheck`, `errcheck`, and `gosec` enabled; tune `gosec` to not fire on intentional crypto use
+
+**Relay observability:**
+
+- [ ] add Prometheus `/metrics` endpoint to `services/relay/` using `github.com/prometheus/client_golang`
+- [ ] expose relay-specific counters: active rooms, total transfers started, total bytes forwarded, and rooms reaped by TTL
+- [ ] add `net/http/pprof` handler on a separate admin listener in `services/relay/` (distinct from the public WebSocket port so profiling is never reachable from the public surface)
+
+**HTTP server hardening:**
+
+- [ ] set explicit `ReadTimeout`, `WriteTimeout`, `IdleTimeout`, and `ReadHeaderTimeout` on the relay's `http.Server` struct; log the configured values at startup
+
+**Security fuzz tests:**
+
+- [ ] add a fuzz test for rendezvous code parsing in `client/internal/code/` covering malformed lengths, wrong word counts, invalid characters, and truncated inputs
+- [ ] add a fuzz test for transfer frame parsing in `client/internal/` covering truncated frames, oversized length fields, and corrupted type bytes
+
+**Task runner:**
+
+- [ ] add a root `magefile.go` using `github.com/magefile/mage` with targets: `Test` (all modules), `Build` (all modules), `Lint` (golangci-lint on all modules), `Vuln` (govulncheck on all modules), and `Check` (all of the above in order)
+- [ ] update the "Build / Run / Verify" section of this file to prefer `mage` targets over raw shell commands
+
+Exit criteria:
+
+- every module passes `go test ./...`, `golangci-lint run`, and `govulncheck ./...` cleanly in CI
+- the relay emits Prometheus metrics at `/metrics` and `pprof` is accessible on a separate admin listener
+- the relay's `http.Server` has explicit timeouts visible in the source
+- fuzz targets exist for code parsing and frame parsing and run for at least one minute without a crash
+- `mage check` runs the full quality bar from a single command at the repo root
+
 ---
 
 ## Focused Verification Checklist
