@@ -52,6 +52,17 @@ The repo now also ships an in-repo browser surface built with **Bun + TypeScript
 | `punchthrough` | `lib/punchthrough/` | active but not integrated | NAT probing and UDP hole-punching primitives |
 | `bore-admin` | `services/bore-admin/` | active | Minimal operator CLI for relay health and status polling |
 
+## Data layer stance
+
+Bore's shipped path does **not** need a durable database today.
+
+- `services/relay/` keeps live room state in memory only.
+- `web/` is a read-only browser surface that fetches the relay's live `/status` snapshot.
+- `services/bore-admin/` is a stateless CLI over that same `/status` endpoint.
+- resumable transfers, transfer history, and persisted operator history are **not implemented yet**.
+
+If Bore later earns local persistence for resume metadata, relay observations, or operator history, start with a small **relational SQLite** store. Only move to **PostgreSQL** if Bore becomes a genuinely multi-node control plane with write/concurrency pressure SQLite no longer fits. If the browser surface ever grows into authenticated write-heavy workflows, **Drizzle** is the default web-side fit; otherwise keep Go-side SQL explicit and boring. Do not pivot Bore's future data story toward MongoDB or a document-store control plane.
+
 ## Quick start
 
 ### 1. Build the browser surface

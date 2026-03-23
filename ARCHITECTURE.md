@@ -353,6 +353,33 @@ Keep docs honest: treat this module as minimal operator tooling alongside the ne
 
 ---
 
+## Data And Persistence Posture
+
+Bore's current shipped architecture has **no durable data layer**.
+
+Current truth:
+
+- the relay keeps active room state in an in-memory registry with TTL-based cleanup
+- the browser surface is a read-only same-origin view over live relay status
+- `bore-admin` is an on-demand polling CLI, not a history service
+- the client does not persist resumable transfer metadata or transfer history yet
+
+If Bore later needs local durable state, the default path is:
+
+1. keep the data **relational**
+2. start with **SQLite**
+3. use **Drizzle** only if the browser surface genuinely becomes a write-owning web app
+4. keep Go-side queries plain SQL first, with **`sqlc`** only if backend complexity earns it
+5. move to **PostgreSQL** only when Bore clearly outgrows SQLite because it has become a real multi-node/networked control plane
+
+What Bore should avoid:
+
+- adding a database before a concrete feature needs one
+- inventing a document-store/MongoDB detour for relay history or resume metadata
+- treating the read-only web surface as if it already justified a control-plane backend
+
+---
+
 ## Transfer Flow
 
 ### Current verified relay flow

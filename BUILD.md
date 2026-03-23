@@ -52,8 +52,28 @@ bore currently ships a **relay-based encrypted file transfer path** plus a real 
 - relay rate limiting / quotas / operational controls
 - metrics endpoint on the relay
 - broader operator tooling beyond status snapshots
-- auth, persistence, or control-plane behavior for the browser surface
+- auth, durable persistence, or control-plane behavior for the browser surface
 - broader security review and operational hardening
+
+---
+
+## Data Layer Stance
+
+Current implementation truth:
+
+- there is **no durable database or local persistence layer** in the shipped path today
+- `services/relay/internal/room` keeps bounded room state in memory only
+- `web/` reads live aggregate state from `/status`; it does not own writes, auth, or stored operator data
+- `services/bore-admin/` fetches `/status` on demand and does not persist snapshots
+- resumable transfer metadata, transfer history, and historical relay observations are still future work
+
+Doctrine for future work:
+
+- if Bore later needs local persistence, start with **SQLite** and a **relational** schema
+- if the browser surface later earns authenticated write-heavy workflows, use **Drizzle** on the web side
+- if heavier Go-owned backend workflows later earn a richer query layer, use plain SQL first and add **`sqlc`** only when the query surface clearly justifies it
+- move to **PostgreSQL** only if Bore becomes a real multi-node/networked control plane with concurrency or operational demands SQLite cannot carry cleanly
+- do **not** invent a MongoDB/document-store pivot for relay history, resume metadata, or operator state
 
 ---
 
@@ -143,7 +163,7 @@ What exists:
 What is still missing:
 
 - authenticated operator workflows
-- historical views or persisted relay state
+- historical views or persisted relay state; if this ever changes, start with SQLite-first local persistence
 - any mutation/control-plane actions
 - browser coverage beyond focused frontend unit checks
 
@@ -176,7 +196,7 @@ What exists:
 
 What is still missing:
 
-- persistent storage
+- persistent storage; if `bore-admin` later needs local history, start with SQLite instead of inventing a remote database
 - alerting
 - configuration profiles
 - metrics/history views
@@ -347,7 +367,7 @@ Checklist:
 - [x] serve the built web surface from the relay at `/` and `/ops/relay/`
 - [x] keep the browser surface same-origin and read-only against the existing `/status` endpoint
 - [x] keep the product story aligned with the actual relay-based runtime
-- [ ] decide whether the browser surface should stay static + read-only or grow authenticated workflows later
+- [ ] decide whether the browser surface should stay static + read-only or grow authenticated workflows later; if it ever owns durable writes, start with SQLite + Drizzle
 - [ ] add browser-level smoke coverage only if the page surface becomes operationally critical
 
 ### Phase 5 — operator tooling depth
@@ -357,7 +377,7 @@ Checklist:
 Checklist:
 
 - [ ] expand `bore-admin` beyond simple status polling only when the relay operator story truly needs it
-- [ ] add useful historical/operator views only if they solve a real relay problem
+- [ ] add useful historical/operator views only if they solve a real relay problem; if they need persistence, start with local SQLite
 - [ ] add alerting/config basics without turning bore into a control-plane platform
 - [ ] keep the browser surface narrow unless a broader control plane is explicitly justified
 
@@ -510,10 +530,10 @@ Mitigation:
 
 Useful next steps are clear:
 
-- persist relay observations over time
-- add simple operator views beyond the single status summary
-- add alerting/configuration basics
-- decide whether metrics/history should live in the relay, `bore-admin`, the browser surface, or some narrow combination of them
+- decide whether relay observations need persistence at all before adding a store
+- add simple operator views beyond the single status summary only if they solve a real relay problem
+- add alerting/configuration basics without turning Bore into a control plane
+- if metrics/history need local durability later, start with a small relational SQLite store and then decide whether it belongs in the relay, `bore-admin`, the browser surface, or some narrow combination of them
 
 Avoid overbuilding beyond what the relay actually needs.
 
