@@ -88,6 +88,56 @@ func TestRelay_StatusEndpoints(t *testing.T) {
 	}
 }
 
+func TestRelay_WebSurface(t *testing.T) {
+	_, ts := testServer(t)
+
+	rootResp, err := http.Get(ts.URL + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer rootResp.Body.Close()
+
+	if rootResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET / status = %d, want %d", rootResp.StatusCode, http.StatusOK)
+	}
+
+	rootBody, err := io.ReadAll(rootResp.Body)
+	if err != nil {
+		t.Fatalf("read / body: %v", err)
+	}
+	if !strings.Contains(string(rootBody), "File transfer that keeps the relay in the dark.") {
+		t.Fatalf("GET / body missing homepage headline")
+	}
+
+	opsResp, err := http.Get(ts.URL + "/ops/relay/")
+	if err != nil {
+		t.Fatalf("GET /ops/relay/: %v", err)
+	}
+	defer opsResp.Body.Close()
+
+	if opsResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /ops/relay/ status = %d, want %d", opsResp.StatusCode, http.StatusOK)
+	}
+
+	opsBody, err := io.ReadAll(opsResp.Body)
+	if err != nil {
+		t.Fatalf("read /ops/relay/ body: %v", err)
+	}
+	if !strings.Contains(string(opsBody), "Relay status, without pretending it is a control plane.") {
+		t.Fatalf("GET /ops/relay/ body missing operator headline")
+	}
+
+	notFoundResp, err := http.Get(ts.URL + "/missing")
+	if err != nil {
+		t.Fatalf("GET /missing: %v", err)
+	}
+	defer notFoundResp.Body.Close()
+
+	if notFoundResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("GET /missing status = %d, want %d", notFoundResp.StatusCode, http.StatusNotFound)
+	}
+}
+
 // dialSender connects as a sender and returns the WebSocket conn and the room ID.
 func dialSender(t *testing.T, ctx context.Context, ts *httptest.Server) (*websocket.Conn, string) {
 	t.Helper()

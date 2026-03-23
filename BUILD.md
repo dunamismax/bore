@@ -17,10 +17,11 @@ If this file and the code disagree, fix both in the same change.
 
 ## Current Truth
 
-bore currently ships a **relay-based encrypted file transfer path** built from four tracked components:
+bore currently ships a **relay-based encrypted file transfer path** plus a real in-repo browser surface built from five tracked components:
 
 - **`client/`** — user-facing CLI for rendezvous, handshake, and encrypted file transfer
-- **`services/relay/`** — WebSocket relay that pairs peers, forwards encrypted frames, and exposes operator health/status endpoints
+- **`services/relay/`** — WebSocket relay that pairs peers, forwards encrypted frames, exposes operator health/status endpoints, and serves the embedded web UI
+- **`web/`** — Bun + TypeScript + Astro + Alpine browser surface for the product page and relay ops page
 - **`lib/punchthrough/`** — NAT probing and hole-punching groundwork for a future direct path
 - **`services/bore-admin/`** — minimal operator CLI for relay status polling
 
@@ -35,6 +36,11 @@ bore currently ships a **relay-based encrypted file transfer path** built from f
 - relay in `services/relay/` with:
   - WebSocket room brokering
   - `/healthz` and `/status` operator endpoints
+  - embedded static web serving for `/` and `/ops/relay/`
+- browser surface in `web/` with:
+  - Astro product homepage for Bore's current runtime story
+  - Alpine-powered relay ops page that reads `/status`
+  - static build output embedded into the relay
 - NAT probing / hole-punching groundwork in `lib/punchthrough/`
 - `bore-admin` CLI in `services/bore-admin/` for relay status polling
 
@@ -45,7 +51,8 @@ bore currently ships a **relay-based encrypted file transfer path** built from f
 - directory transfer
 - relay rate limiting / quotas / operational controls
 - metrics endpoint on the relay
-- admin surface beyond status polling
+- broader operator tooling beyond status snapshots
+- auth, persistence, or control-plane behavior for the browser surface
 - broader security review and operational hardening
 
 ---
@@ -55,8 +62,9 @@ bore currently ships a **relay-based encrypted file transfer path** built from f
 ```text
 bore/
 ├── client/                  # active Go client
+├── web/                     # Astro + Alpine browser surface
 ├── services/
-│   ├── relay/               # active Go relay service
+│   ├── relay/               # active Go relay service + embedded web UI
 │   └── bore-admin/          # minimal operator CLI
 ├── lib/
 │   └── punchthrough/        # NAT probing + hole-punching primitives
@@ -109,6 +117,7 @@ What exists:
 - bidirectional frame relay
 - room TTL reaper
 - `/healthz` and `/status` endpoints for operator visibility
+- embedded static web UI serving at `/` and `/ops/relay/`
 - graceful shutdown handling
 - tests for room and transport behavior
 
@@ -118,6 +127,25 @@ What is still missing:
 - metrics endpoint
 - stronger operator-facing resource controls
 - deployment/service packaging artifacts
+
+### `web/` — browser surface
+
+**Status:** active, intentionally thin
+
+What exists:
+
+- Bun-managed frontend workspace
+- TypeScript + Astro static site with product-facing Bore homepage
+- Alpine-powered relay ops page that polls `/status`
+- styles, layout, and formatting helpers kept inside `web/`
+- production build output embedded by the relay under `services/relay/internal/webui/dist/`
+
+What is still missing:
+
+- authenticated operator workflows
+- historical views or persisted relay state
+- any mutation/control-plane actions
+- browser coverage beyond focused frontend unit checks
 
 ### `lib/punchthrough/` — NAT tooling groundwork
 
@@ -149,10 +177,10 @@ What exists:
 What is still missing:
 
 - persistent storage
-- TUI / web UI
 - alerting
 - configuration profiles
 - metrics/history views
+- deeper coordination with the new browser operator surface
 
 ---
 
@@ -161,7 +189,23 @@ What is still missing:
 ### Prerequisites
 
 - Go `1.26.1`
+- Bun `1.3.x`
 - no top-level `go.work`; build and test per module
+
+### Web
+
+```bash
+cd web
+bun install
+bun run check
+bun run test
+bun run build
+```
+
+Notes:
+
+- `bun run build` writes the static output into `services/relay/internal/webui/dist/`
+- rebuild the web surface before shipping relay changes that depend on updated embedded assets
 
 ### Client
 
@@ -210,6 +254,12 @@ cd services/relay
 RELAY_ADDR=127.0.0.1:8080 go run ./cmd/relay
 ```
 
+Browser check while Terminal 1 is running:
+
+- product page: `http://127.0.0.1:8080/`
+- relay ops page: `http://127.0.0.1:8080/ops/relay/`
+- raw status JSON: `http://127.0.0.1:8080/status`
+
 Terminal 2:
 
 ```bash
@@ -230,6 +280,8 @@ Expected result:
 - receiver completes successfully
 - sender and receiver SHA-256 values match
 - output file matches input bytes
+- `/` and `/ops/relay/` render from the relay with no broken static assets
+- `/ops/relay/` successfully reads aggregate data from `/status`
 
 ---
 
@@ -285,27 +337,42 @@ Checklist:
 - [ ] add metrics endpoint and operator-facing counters
 - [ ] tighten deployment/service packaging rails
 
-### Phase 4 — operator surface
+### Phase 4 — browser/operator surface
+
+**Status:** active / initial implementation landed
+
+Checklist:
+
+- [x] add an in-repo Bun + TypeScript + Astro + Alpine frontend under `web/`
+- [x] serve the built web surface from the relay at `/` and `/ops/relay/`
+- [x] keep the browser surface same-origin and read-only against the existing `/status` endpoint
+- [x] keep the product story aligned with the actual relay-based runtime
+- [ ] decide whether the browser surface should stay static + read-only or grow authenticated workflows later
+- [ ] add browser-level smoke coverage only if the page surface becomes operationally critical
+
+### Phase 5 — operator tooling depth
 
 **Status:** planned
 
 Checklist:
 
-- [ ] expand `bore-admin` beyond simple status polling
+- [ ] expand `bore-admin` beyond simple status polling only when the relay operator story truly needs it
 - [ ] add useful historical/operator views only if they solve a real relay problem
 - [ ] add alerting/config basics without turning bore into a control-plane platform
+- [ ] keep the browser surface narrow unless a broader control plane is explicitly justified
 
-### Phase 5 — tech stack alignment
+### Phase 6 — tech stack alignment
 
 **Status:** planned
 
-This phase closes the gap between the current codebase and the standard Go service baseline. Each item is directly motivated by a concrete gap in bore's tooling, CI, or relay operation -- not by general software idealism.
+This phase closes the gap between the current codebase and the standard service baseline. Each item is directly motivated by a concrete gap in bore's tooling, CI, or relay operation -- not by general software idealism.
 
 **CI pipeline:**
 
-- [ ] add `.github/workflows/ci.yml` that runs `go test ./...` for all four modules (`client/`, `services/relay/`, `services/bore-admin/`, `lib/punchthrough/`) on push and PR
-- [ ] add `golangci-lint run` to the CI workflow for each module
-- [ ] add `govulncheck ./...` to the CI workflow for each module
+- [ ] add `.github/workflows/ci.yml` that runs `go test ./...` for the Go modules (`client/`, `services/relay/`, `services/bore-admin/`, `lib/punchthrough/`) and `bun run check && bun run test && bun run build` for `web/` on push and PR
+- [ ] add `golangci-lint run` to the CI workflow for each Go module
+- [ ] add `govulncheck ./...` to the CI workflow for each Go module
+- [ ] cache Bun dependencies for the `web/` job
 
 **Linting config:**
 
@@ -333,7 +400,8 @@ This phase closes the gap between the current codebase and the standard Go servi
 
 Exit criteria:
 
-- every module passes `go test ./...`, `golangci-lint run`, and `govulncheck ./...` cleanly in CI
+- every Go module passes `go test ./...`, `golangci-lint run`, and `govulncheck ./...` cleanly in CI
+- `web/` passes `bun run check`, `bun run test`, and `bun run build` cleanly in CI
 - the relay emits Prometheus metrics at `/metrics` and `pprof` is accessible on a separate admin listener
 - the relay's `http.Server` has explicit timeouts visible in the source
 - fuzz targets exist for code parsing and frame parsing and run for at least one minute without a crash
@@ -350,6 +418,12 @@ Use the narrowest verification that proves the current claim:
 - re-read the touched docs for consistency
 - confirm current-state sections only describe implemented behavior
 - confirm planned sections are explicitly labeled as planned work
+
+### Web changes
+
+```bash
+cd web && bun run check && bun run test && bun run build
+```
 
 ### Client changes
 
@@ -387,7 +461,7 @@ Run every affected module command above, then verify the docs still match the co
 2. **Treat the rendezvous code as cryptographic input, not just a locator.**
 3. **Do not overclaim direct mode.** The reliable verified path today is relay-based.
 4. **Keep docs honest.** Aspirational language belongs in planned sections, not current-state summaries.
-5. **Avoid speculative new surfaces.** Add new tooling only when it solves a real operator or transport problem.
+5. **Keep the browser surface honest and narrow.** New web/UI work should support the real product or operator story, not invent a control plane the runtime does not have.
 6. **Run the narrowest meaningful verification first.** Broaden only when the change surface demands it.
 7. **If you change architecture or security claims, update `BUILD.md`, `ARCHITECTURE.md`, and `SECURITY.md` in the same pass.**
 
@@ -400,14 +474,14 @@ Run every affected module command above, then verify the docs still match the co
 1. integrate `lib/punchthrough/` into client transport selection
 2. add resumable transfer state
 3. add relay rate limiting + metrics
-4. deepen `bore-admin` beyond status polling into a broader operator surface
-5. keep documentation aligned as those features land
+4. decide how much operator depth belongs in `bore-admin` versus the new browser surface
+5. keep documentation and embedded web assets aligned as those features land
 
 ### If the goal is cleanup instead of features
 
 1. tighten docs around the relay-based path and current limits
 2. remove claims that imply direct transport is already present
-3. keep minimal operator tooling clearly scoped to what it actually does
+3. keep the browser/operator surface clearly scoped to what it actually does today
 4. trim stale commentary that does not help a future maintainer ship the next step
 
 ---
@@ -439,7 +513,7 @@ Useful next steps are clear:
 - persist relay observations over time
 - add simple operator views beyond the single status summary
 - add alerting/configuration basics
-- decide whether metrics should live in the relay, the admin tool, or both
+- decide whether metrics/history should live in the relay, `bore-admin`, the browser surface, or some narrow combination of them
 
 Avoid overbuilding beyond what the relay actually needs.
 
@@ -458,5 +532,6 @@ If you are resuming this repo later, do this in order:
    - direct transport integration
    - resume support
    - relay hardening
+   - browser/operator surface work
    - bore-admin implementation
 7. run focused verification before and after the change

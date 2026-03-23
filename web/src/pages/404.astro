@@ -1,0 +1,21 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="Bore | Page not found"
+  description="The requested Bore page does not exist."
+>
+  <section class="panel not-found">
+    <p class="eyebrow">404</p>
+    <h1>That route is not part of bore's current surface.</h1>
+    <p>
+      Try the product homepage or the relay operator page. Bore keeps the browser surface
+      narrow on purpose.
+    </p>
+    <div class="hero-actions">
+      <a class="button" href="/">Back to homepage</a>
+      <a class="button button-secondary" href="/ops/relay/">Open relay status</a>
+    </div>
+  </section>
+</BaseLayout>

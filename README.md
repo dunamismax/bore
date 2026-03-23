@@ -1,8 +1,13 @@
 # bore
 
-**Privacy-first file transfer. No accounts, no cloud, no trust in the relay.**
+**Privacy-first file transfer with a real browser surface and a payload-blind relay.**
 
-bore moves a file between two machines with a short human-readable rendezvous code. The current shipped path uses a self-hostable relay to connect peers while keeping file data end-to-end encrypted.
+bore moves a file between two machines with a short human-readable rendezvous code. The current shipped transfer path is relay-based: the relay connects peers and forwards encrypted bytes, while the file data stays end-to-end encrypted between sender and receiver.
+
+The repo now also ships an in-repo browser surface built with **Bun + TypeScript + Astro + Alpine.js**. It lives alongside the existing CLI/runtime story instead of replacing it:
+
+- `/` is the product-facing Bore homepage when served by the relay
+- `/ops/relay/` is a read-only operator page backed by the relay's existing `/status` endpoint
 
 ## Status
 
@@ -10,6 +15,7 @@ bore moves a file between two machines with a short human-readable rendezvous co
 
 - the active client lives in `client/` and is implemented in **Go**
 - the relay lives in `services/relay/` and is implemented in **Go**
+- the browser surface lives in `web/` and is implemented with **Bun + TypeScript + Astro + Alpine.js**
 - NAT tooling lives in `lib/punchthrough/` and is implemented in **Go**
 - `services/bore-admin/` is a minimal operator CLI for relay health and status checks
 - the verified transfer path today is **relay-based**, not direct peer-to-peer
@@ -23,6 +29,7 @@ bore moves a file between two machines with a short human-readable rendezvous co
 - SHA-256 file integrity verification
 - self-hostable WebSocket relay in `services/relay/`
 - relay `/healthz` and `/status` operator endpoints
+- embedded relay-served web UI at `/` and `/ops/relay/`
 - `bore-admin status` relay polling in `services/bore-admin/`
 - standalone NAT probing and hole-punching groundwork in `lib/punchthrough/`
 
@@ -32,49 +39,66 @@ bore moves a file between two machines with a short human-readable rendezvous co
 - resumable transfers
 - directory transfer
 - relay rate limiting and metrics
-- deeper admin tooling beyond relay status polling
+- broader operator tooling beyond status snapshots
 - broader security hardening and external review
 
 ## Components
 
 | Component | Location | Status | Purpose |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `bore` client | `client/` | active | Rendezvous, handshake, encrypted transfer, CLI |
-| `relay` | `services/relay/` | active | WebSocket room broker for encrypted payload forwarding |
+| `relay` | `services/relay/` | active | WebSocket room broker, `/healthz`, `/status`, and static web UI serving |
+| `web` | `web/` | active | Astro/Alpine browser surface for product story and live relay ops page |
 | `punchthrough` | `lib/punchthrough/` | active but not integrated | NAT probing and UDP hole-punching primitives |
 | `bore-admin` | `services/bore-admin/` | active | Minimal operator CLI for relay health and status polling |
 
 ## Quick start
 
-### 1. Build the relay
+### 1. Build the browser surface
+
+```bash
+cd web
+bun install
+bun run build
+```
+
+This writes the production web output into `services/relay/internal/webui/dist/` so the relay can embed and serve it.
+
+### 2. Build the relay
 
 ```bash
 cd services/relay
 go build ./cmd/relay
 ```
 
-### 2. Build the client
+### 3. Build the client
 
 ```bash
 cd client
 go build ./cmd/bore
 ```
 
-### 3. Run a local relay
+### 4. Run a local relay
 
 ```bash
 cd services/relay
 RELAY_ADDR=127.0.0.1:8080 go run ./cmd/relay
 ```
 
-### 4. Check relay status (optional)
+With the relay running:
+
+- product page: <http://127.0.0.1:8080/>
+- relay ops page: <http://127.0.0.1:8080/ops/relay/>
+- raw status JSON: <http://127.0.0.1:8080/status>
+
+### 5. Check relay status from the CLI (optional)
 
 ```bash
 cd services/bore-admin
 go run ./cmd/bore-admin status --relay http://127.0.0.1:8080
 ```
 
-### 5. Send a file
+### 6. Send a file
 
 ```bash
 cd client
@@ -92,7 +116,7 @@ Relay: http://127.0.0.1:8080
 Waiting for receiver...
 ```
 
-### 6. Receive the file on the other machine
+### 7. Receive the file on the other machine
 
 ```bash
 cd client
@@ -100,6 +124,15 @@ cd client
 ```
 
 ## Build and test
+
+### Web
+
+```bash
+cd web
+bun run check
+bun run test
+bun run build
+```
 
 ### Client
 
@@ -144,8 +177,9 @@ go build ./cmd/bore-admin
 │       ├── engine/
 │       ├── rendezvous/
 │       └── transport/
+├── web/                     # Astro + Alpine browser surface
 ├── services/
-│   ├── relay/               # active Go relay service
+│   ├── relay/               # active Go relay service + embedded web UI dist
 │   └── bore-admin/          # minimal operator CLI
 ├── lib/
 │   └── punchthrough/        # NAT tooling
@@ -160,15 +194,17 @@ go build ./cmd/bore-admin
 ## Near-term roadmap
 
 - keep the relay-based path stable and honest
+- keep the web surface narrow, read-only, and same-origin with the relay
 - integrate `lib/punchthrough/` into transport selection
 - add resumable transfer state
 - harden relay operations and observability
-- deepen `services/bore-admin/` beyond status polling
+- deepen operator tooling only where it solves real relay problems
 
 ## Notes
 
 - The rendezvous code is a cryptographic input to the handshake, not just a routing token.
 - The relay brokers connections and forwards encrypted bytes; it should stay payload-blind.
+- The root web surface is a product/operator layer over Bore's existing runtime, not a replacement for the CLI or transfer engine.
 - The codebase currently ships one reliable transfer path. Treat direct transport as planned work until it is integrated and verified.
 - If docs and code disagree, the docs are stale. Fix both in the same change.
 

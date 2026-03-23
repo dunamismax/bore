@@ -8,7 +8,7 @@ This document describes the current repo architecture and the near-term shape it
 
 ## System Overview
 
-bore currently consists of four tracked components:
+bore currently consists of five tracked components:
 
 ```text
 ┌─────────────┐                           ┌─────────────┐
@@ -21,23 +21,24 @@ bore currently consists of four tracked components:
        └───────────────┬─────────────────────────┘
                        │
                 ┌──────▼──────┐
-                │ Go relay    │
-                │ (payload-   │
-                │ blind)      │
-                └──────┬──────┘
-                       │
-                ┌──────▼──────┐
-                │ punchthrough│
-                │ groundwork  │
-                │ (future     │
-                │ direct path)│
-                └─────────────┘
+                │ Go relay    │◄──────────────┐
+                │ (payload-   │               │
+                │ blind)      │               │
+                └──────┬──────┘               │
+                       │                      │
+                ┌──────▼──────┐        ┌──────▼──────┐
+                │ punchthrough│        │ web surface │
+                │ groundwork  │        │ Astro/Alpine│
+                │ (future     │        │ same-origin │
+                │ direct path)│        │ via relay   │
+                └─────────────┘        └─────────────┘
 ```
 
 1. **Client (`client/`)** generates or parses a rendezvous code, performs the Noise handshake, and streams encrypted file data.
-2. **Relay (`services/relay/`)** pairs sender and receiver and forwards encrypted frames over WebSockets.
-3. **Punchthrough (`lib/punchthrough/`)** contains STUN and UDP hole-punching primitives for a future direct path.
-4. **bore-admin (`services/bore-admin/`)** is a minimal operator CLI that queries relay status but does not participate in transfer runtime behavior.
+2. **Relay (`services/relay/`)** pairs sender and receiver, forwards encrypted frames over WebSockets, and serves the embedded browser surface.
+3. **Web (`web/`)** provides the product-facing homepage and a read-only relay ops page, built with Bun + TypeScript + Astro + Alpine.
+4. **Punchthrough (`lib/punchthrough/`)** contains STUN and UDP hole-punching primitives for a future direct path.
+5. **bore-admin (`services/bore-admin/`)** is a minimal operator CLI that queries relay status but does not participate in transfer runtime behavior.
 
 The current verified path is **relay-based transfer**. Direct transport is still a planned integration step, not current runtime behavior.
 
@@ -55,11 +56,21 @@ client/
     ├── rendezvous/           # relay session orchestration
     └── transport/            # WebSocket relay transport
 
+web/
+├── src/
+│   ├── layouts/              # Astro page shell
+│   ├── lib/                  # status types + formatting helpers
+│   ├── pages/                # product + relay ops routes
+│   ├── scripts/              # Alpine bootstrapping
+│   └── styles/               # tokens + base CSS
+└── tests/                    # focused frontend unit coverage
+
 services/relay/
 ├── cmd/relay/                # relay entry point
 └── internal/
     ├── room/                 # room lifecycle and registry
-    └── transport/            # WebSocket server + frame forwarding
+    ├── transport/            # WebSocket server + frame forwarding
+    └── webui/                # embedded static build output + HTTP handler
 
 lib/punchthrough/
 ├── cmd/punchthrough/         # operator/dev CLI
@@ -220,6 +231,7 @@ Owns:
 - sender and receiver connection handling
 - frame relay between paired peers
 - lightweight `/healthz` and `/status` operator endpoints
+- same-origin serving for the embedded static web UI
 
 Design constraints:
 
@@ -231,7 +243,58 @@ Current limitations:
 
 - no explicit rate limiting yet
 - no metrics endpoint yet
-- operator visibility is still limited to lightweight health/status summaries
+- operator visibility is still limited to lightweight health/status summaries and a read-only browser page
+
+---
+
+## Browser Surface Architecture (`web/`)
+
+The web surface is intentionally thin and same-origin with the relay.
+
+### Layering
+
+```text
+Astro pages + layouts
+  ↓
+static HTML/CSS output
+  ↓
+small Alpine enhancement for relay status polling
+  ↓
+same-origin GET to relay `/status`
+```
+
+### Responsibilities
+
+#### `web/src/pages`
+
+Owns:
+
+- the Bore product-facing homepage
+- the relay operator page at `/ops/relay/`
+- route-local content that stays aligned with the actual shipped runtime
+
+#### `web/src/scripts`
+
+Owns:
+
+- Alpine bootstrapping
+- periodic polling of `/status`
+- browser-side formatting for relay uptime, limits, and room counts
+
+#### `services/relay/internal/webui`
+
+Owns:
+
+- embedded Astro build artifacts
+- static file resolution and 404 handling
+- HTTP headers for the browser surface
+
+Design constraints:
+
+- keep the web surface read-only
+- prefer static output over a separate frontend runtime
+- do not add a second API just to support the status page
+- keep the browser story aligned with the existing relay-based product truth
 
 ---
 
@@ -281,12 +344,12 @@ What it is:
 
 What it is not:
 
-- a dashboard
+- the browser dashboard itself
 - a metrics/history system
 - a storage layer
 - an operational dependency of the relay or client
 
-Keep docs honest: treat this module as minimal operator tooling until it grows beyond status polling.
+Keep docs honest: treat this module as minimal operator tooling alongside the new read-only browser surface until it grows beyond status polling.
 
 ---
 

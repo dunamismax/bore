@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/dunamismax/bore/services/relay/internal/room"
+	"github.com/dunamismax/bore/services/relay/internal/webui"
 	"nhooyr.io/websocket"
 )
 
@@ -68,6 +69,7 @@ func NewServer(cfg ServerConfig) *Server {
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/status", s.handleStatus)
 	mux.HandleFunc("/ws", s.handleWS)
+	mux.Handle("/", webui.NewHandler())
 
 	s.httpSrv = &http.Server{
 		Addr:    cfg.Addr,

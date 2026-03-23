@@ -13,11 +13,13 @@ Implemented today:
 - payload-blind relay forwarding in `services/relay/`
 - room expiry and bounded in-memory room tracking in the relay
 - relay `/healthz` and `/status` endpoints that expose aggregate operator data only
+- same-origin relay-served web pages at `/` and `/ops/relay/`, with the ops page reading aggregate data from `/status`
 
 Important limits on those claims:
 
 - the currently verified path is **relay-based**, not direct peer-to-peer
 - the relay is functional but not yet hardened with rate limiting or metrics
+- the browser surface is read-only and intentionally narrow; it is not an authenticated control plane
 - the system has **not** had an external security audit yet
 - resumable transfer behavior is not implemented yet
 - bore is **not** an anonymity tool
@@ -77,17 +79,18 @@ Implemented relay guardrails are modest but real:
 
 These are baseline resource controls, not a substitute for proper abuse protection.
 
-### Operator endpoints
+### Operator endpoints and browser surface
 
-The relay now exposes `/healthz` and `/status` for basic operator visibility.
-Those endpoints are intended to reveal only aggregate service state such as:
+The relay now exposes `/healthz` and `/status` for basic operator visibility, and serves a same-origin browser surface at `/` and `/ops/relay/`.
+Those surfaces are intended to reveal only aggregate service state such as:
 
 - process health
 - relay uptime
 - room counts by state
 - configured room/transport limits
+- static product/operator copy that matches the shipped runtime
 
-They should not expose plaintext payloads, rendezvous codes, or per-transfer decrypted metadata.
+They should not expose plaintext payloads, rendezvous codes, per-transfer decrypted metadata, or control-plane mutations.
 
 ---
 
@@ -139,6 +142,10 @@ Not yet implemented:
 - longer-term relay observation/history tooling
 
 This means the relay should be treated as functional but not yet production-hardened against abuse or observability requirements.
+
+### Browser surface is intentionally thin
+
+The new web layer is intentionally read-only. It does not add auth, persistent operator state, or mutation endpoints. Treat it as a convenience view over aggregate relay state, not a security boundary or control plane.
 
 ### Direct transport is not active yet
 

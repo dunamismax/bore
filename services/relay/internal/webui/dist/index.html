@@ -1,0 +1,29 @@
+<!DOCTYPE html><html lang="en"> <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Bore | Privacy-first file transfer through a payload-blind relay</title><meta name="description" content="Bore moves a file between two machines with a human-readable rendezvous code and a relay that stays blind to payload contents."><link rel="stylesheet" href="/_astro/index.BZwos-2y.css"></head> <body> <div class="site-shell"> <header class="site-header"> <a class="brand" href="/"> <span class="brand-mark">bore</span> <span class="brand-copy">payload-blind encrypted transfer</span> </a> <nav class="site-nav" aria-label="Primary"> <a href="/">Product</a> <a href="/ops/relay/">Relay Ops</a> </nav> </header> <main>  <section class="hero panel"> <div class="hero-copy"> <p class="eyebrow">Relay-based. Encrypted. Self-hostable.</p> <h1>File transfer that keeps the relay in the dark.</h1> <p class="hero-body">
+Bore moves a file between two machines with a short rendezvous code, a Noise
+        handshake, and a relay that forwards encrypted bytes without becoming a storage or
+        trust anchor.
+</p> <div class="hero-actions"> <a class="button" href="/ops/relay/">Open relay operator surface</a> <a class="button button-secondary" href="#current-shape">See current shape</a> </div> <ul class="hero-points"> <li>No accounts, no cloud mailbox, no payload inspection.</li> <li>Verified runtime path today is relay-based, not direct peer-to-peer.</li> <li>Same-origin operator page reads aggregate relay state from <code>/status</code>.</li> </ul> </div> <div class="hero-aside"> <div class="signal-card"> <p class="signal-label">rendezvous code example</p> <p class="signal-code">Ahcj7nQZclo-j15A_xGS8w-868-outer-crane-crane</p> <dl class="signal-grid"> <div> <dt>Handshake</dt> <dd>Noise XXpsk0</dd> </div> <div> <dt>Channel</dt> <dd>ChaCha20-Poly1305</dd> </div> <div> <dt>Integrity</dt> <dd>SHA-256</dd> </div> <div> <dt>Relay role</dt> <dd>encrypted frame broker</dd> </div> </dl> </div> </div> </section> <section class="grid-2" id="current-shape"> <article class="panel story-card"> <p class="section-kicker">Current shipped path</p> <h2>Relay first, with the claims kept tight.</h2> <p>
+The active client in <code>client/</code> creates or parses the rendezvous code,
+        completes the cryptographic handshake, and streams encrypted file frames through the
+        relay in <code>services/relay/</code>.
+</p> <p>
+The relay is self-hostable and operationally narrow: it exposes <code>/healthz</code>
+and <code>/status</code>, brokers rooms, and forwards bytes. It does not decrypt or
+        reinterpret transfer payloads.
+</p> </article> <article class="panel story-card"> <p class="section-kicker">What this web surface is for</p> <h2>A real product face plus a practical operator page.</h2> <p>
+Bore now ships an in-repo Astro frontend that tells the product story at the root path
+        and gives relay operators a live, browser-facing status page at
+<code>/ops/relay/</code>.
+</p> <p>
+It stays intentionally thin: mostly static HTML and CSS, light Alpine interaction for
+        refreshing relay status, and no new control plane that would distort the current
+        runtime.
+</p> </article> </section> <section class="panel flow-panel"> <p class="section-kicker">Transfer lane</p> <h2>How the secure path works today.</h2> <ol class="flow-list"> <li>Sender opens a relay room and receives a full rendezvous code.</li> <li>Receiver joins with the same code.</li> <li>Both peers mix that code into a Noise <code>XXpsk0</code> handshake.</li> <li>Encrypted transfer frames move through the relay over WebSockets.</li> <li>Receiver verifies the final SHA-256 digest before accepting the file.</li> </ol> <p class="flow-note">
+Direct transport groundwork exists in <code>lib/punchthrough/</code>, but it is not part
+      of the verified transfer path yet.
+</p> </section> <section class="component-grid"> <article class="panel component-card"> <p class="section-kicker">client/</p> <h3>CLI transfer engine</h3> <p>Rendezvous, handshake, framing, relay transport, and file integrity checks.</p> </article> <article class="panel component-card"> <p class="section-kicker">services/relay/</p> <h3>Payload-blind relay</h3> <p>Pairs peers, forwards encrypted frames, and serves health, status, and the web UI.</p> </article> <article class="panel component-card"> <p class="section-kicker">services/bore-admin/</p> <h3>CLI operator summary</h3> <p>Polls <code>/status</code> over HTTP for a terse terminal-side relay view.</p> </article> <article class="panel component-card"> <p class="section-kicker">lib/punchthrough/</p> <h3>Future direct lane</h3> <p>STUN probing and UDP hole-punching groundwork waiting for client integration.</p> </article> </section> <section class="panel operator-callout"> <p class="section-kicker">Operator surface</p> <h2>Need the live relay picture?</h2> <p>
+The relay operator page shows uptime, room counts, and configured limits from the same
+<code>/status</code> endpoint that powers <code>bore-admin status</code>.
+</p> <a class="button" href="/ops/relay/">Open relay status page</a> </section>  </main> <footer class="site-footer"> <p>Bore ships a verified relay-based path today. Direct transport remains planned work.</p> <p>
+The relay pairs peers and forwards encrypted bytes. It should stay payload-blind.
+</p> </footer> </div> </body></html>

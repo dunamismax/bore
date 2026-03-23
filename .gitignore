@@ -4,6 +4,8 @@
 /services/relay/relay
 /services/bore-admin/bore-admin
 /lib/punchthrough/punchthrough
+/web/node_modules
+/web/.astro
 *.test
 vendor/
 
