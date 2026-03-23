@@ -2,127 +2,319 @@
 
 Technical architecture and design notes for `bore`.
 
-This document describes the intended architecture. It is a design reference, not a description of what exists today. See [BUILD.md](BUILD.md) for what is actually implemented.
+This document describes the **current repo architecture** and the near-term shape it is growing toward. For build commands and the current execution checklist, see [BUILD.md](BUILD.md).
 
 ---
 
-## System overview
+## System Overview
 
-bore is a file transfer tool with three components:
+bore currently consists of four tracked components:
 
 ```text
 ┌─────────────┐                           ┌─────────────┐
 │   Sender    │                           │  Receiver   │
-│  (bore-cli) │                           │  (bore-cli) │
-│             │                           │             │
-│  bore-core  │◄─── encrypted channel ───►│  bore-core  │
+│ bore client │                           │ bore client │
+│   (Go)      │                           │   (Go)      │
 └──────┬──────┘                           └──────┬──────┘
        │                                         │
-       │         ┌─────────────────┐             │
-       └────────►│  bore-relay     │◄────────────┘
-                 │  (optional)     │
-                 │  zero-knowledge │
-                 └─────────────────┘
+       │      encrypted application frames       │
+       └───────────────┬─────────────────────────┘
+                       │
+                ┌──────▼──────┐
+                │ Go relay    │
+                │ (payload-   │
+                │ blind)      │
+                └──────┬──────┘
+                       │
+                ┌──────▼──────┐
+                │ punchthrough│
+                │ groundwork  │
+                │ (future     │
+                │ direct path)│
+                └─────────────┘
 ```
 
-1. **Sender** generates a short code, encrypts, and sends files.
-2. **Receiver** enters the code, authenticates, and receives files.
-3. **Relay** (optional) forwards encrypted traffic when direct connection fails. It cannot decrypt the content.
+1. **Client (`client/`)** generates or parses a rendezvous code, performs the Noise handshake, and streams encrypted file data.
+2. **Relay (`services/relay/`)** pairs sender and receiver and forwards encrypted frames over WebSockets.
+3. **Punchthrough (`lib/punchthrough/`)** contains STUN and UDP hole-punching primitives for a future direct path.
+4. **bore-admin (`services/bore-admin/`)** is scaffold-only and does not yet participate in runtime behavior.
+
+The current verified path is **relay-based transfer**. Direct P2P is still a planned integration step, not current runtime behavior.
 
 ---
 
-## Crate architecture
-
-### bore-core
-
-The engine. No IO, no platform-specific code in the public API. Everything behind traits.
+## Repository Map
 
 ```text
-bore-core/
-├── error.rs       # Typed error hierarchy (BoreError → Session/Transfer/Protocol/Crypto/Transport)
-├── session.rs     # Session lifecycle: roles, state machine, capabilities, identity
-├── transfer.rs    # Transfer model: intent, manifest, chunks, progress
-├── protocol.rs    # Wire protocol: versioning, message types, frame constants
-├── crypto.rs      # (Phase 2) Noise XX handshake, AEAD encryption, key derivation
-├── transport.rs   # (Phase 5) Transport trait, direct/relay implementations
-└── codec.rs       # (Phase 1) Frame encoding/decoding, message serialization
+client/
+├── cmd/bore/                 # CLI entry point
+└── internal/
+    ├── code/                 # rendezvous code generation/parsing
+    ├── crypto/               # Noise handshake + secure channel
+    ├── engine/               # transfer framing, send/receive engine
+    ├── rendezvous/           # relay session orchestration
+    └── transport/            # WebSocket relay transport
+
+services/relay/
+├── cmd/relay/                # relay entry point
+└── internal/
+    ├── room/                 # room lifecycle and registry
+    └── transport/            # WebSocket server + frame forwarding
+
+lib/punchthrough/
+├── cmd/punchthrough/         # operator/dev CLI
+└── pkg/
+    ├── punch/                # NAT classification + punch engine
+    └── stun/                 # STUN client and message handling
+
+services/bore-admin/
+└── cmd/bore-admin/           # truthful scaffold placeholder
 ```
 
-Design rules:
-- **No `anyhow` in the library.** Typed errors only (`BoreError`, `SessionError`, etc.).
-- **No direct IO.** Crypto, transport, and file access are behind traits.
-- **Testable in isolation.** All state machines can be exercised without networking or filesystem.
-
-### bore-cli
-
-Thin shell over `bore-core`. Owns IO, user interaction, and progress display.
-
-```text
-bore-cli/
-└── main.rs        # CLI entry point, clap command tree
-```
-
-Will grow to:
-```text
-bore-cli/
-├── main.rs        # Entry point, command routing
-├── send.rs        # Send command: manifest building, code display, progress
-├── receive.rs     # Receive command: code input, acceptance, progress
-├── relay.rs       # Relay command: server startup, config
-├── history.rs     # History command: past transfers
-├── config.rs      # Config file loading, CLI flag merging
-└── ui.rs          # Progress bars, colored output, terminal handling
-```
-
-### bore-relay (future)
-
-Standalone service. Minimal, deployable, self-hostable.
-
-```text
-bore-relay/
-├── main.rs        # Server entry point
-├── room.rs        # Room lifecycle: create, join, relay, close, timeout
-├── ratelimit.rs   # Per-IP and per-room rate limiting
-├── config.rs      # Server configuration
-└── metrics.rs     # Operator metrics (optional)
-```
+Rust crates are intentionally gone from `main`. History belongs in git history, not in a frozen source subtree.
 
 ---
 
-## Transfer flow
+## Client Architecture (`client/`)
 
-### Happy path
+### Layering
 
 ```text
-Sender                          Relay/Rendezvous              Receiver
-  │                                    │                          │
-  │  1. Create session                 │                          │
-  │  2. Generate code                  │                          │
-  │  3. Register code ────────────────►│                          │
-  │  4. Display code to user           │                          │
-  │                                    │                          │
-  │                                    │   5. User enters code    │
-  │                                    │◄──── Lookup code ────────│
-  │                                    │────► Connection info ───►│
-  │                                    │                          │
-  │◄──────── 6. Noise XX handshake (PAKE-bound to code) ────────►│
-  │                                    │                          │
-  │──── 7. Offer (manifest) ─────────────────────────────────────►│
-  │                                    │                          │
-  │◄──── 8. Accept ──────────────────────────────────────────────│
-  │                                    │                          │
-  │──── 9. Data (chunk 0) ──────────────────────────────────────►│
-  │◄──── Ack (chunk 0) ─────────────────────────────────────────│
-  │──── Data (chunk 1) ─────────────────────────────────────────►│
-  │◄──── Ack (chunk 1) ─────────────────────────────────────────│
-  │  ... repeat ...                    │                          │
-  │                                    │                          │
-  │──── 10. Done ───────────────────────────────────────────────►│
-  │◄──── Close ─────────────────────────────────────────────────│
-  │                                    │                          │
+CLI
+  ↓
+rendezvous orchestration
+  ↓
+crypto + transfer engine
+  ↓
+transport abstraction (`io.ReadWriter`)
+  ↓
+WebSocket relay transport today / direct transport later
 ```
 
-### Transport selection
+### Package responsibilities
+
+#### `client/cmd/bore`
+
+Owns:
+
+- CLI argument parsing
+- user-facing help and status output
+- selecting `send`, `receive`, `status`, and `components` flows
+
+Does not own:
+
+- cryptographic state machine internals
+- transfer framing logic
+- relay room lifecycle
+
+#### `client/internal/code`
+
+Owns:
+
+- human-readable rendezvous code generation
+- rendezvous code parsing and validation
+- entropy model for channel + word count
+- formatting for the full code shown to users
+
+Important design rule:
+
+- the rendezvous code is not just a locator; it is also a cryptographic input to the handshake
+
+#### `client/internal/crypto`
+
+Owns:
+
+- Noise `XXpsk0` handshake
+- HKDF-SHA256 derivation of the PSK from the rendezvous code
+- ChaCha20-Poly1305 secure channel after handshake
+- frame encryption/decryption over any `io.ReadWriter`
+
+Implementation truth today:
+
+- protocol suite: `Noise_XXpsk0_25519_ChaChaPoly_SHA256`
+- counter-based nonces
+- post-handshake encrypted application frames
+
+#### `client/internal/engine`
+
+Owns:
+
+- transfer header/chunk/end framing
+- sender-side file streaming
+- receiver-side reassembly
+- SHA-256 integrity verification for the received file
+
+Current scope:
+
+- single file send/receive
+- relay-based transport path
+
+Not yet in this layer:
+
+- resumable transfer bookkeeping
+- directory transfer
+- richer multi-transfer history
+
+#### `client/internal/rendezvous`
+
+Owns:
+
+- sender/receiver session orchestration against the relay
+- room creation / room join flow
+- bridging transport + crypto + engine into the user flow
+
+This is the current “happy path” integration layer for the client.
+
+#### `client/internal/transport`
+
+Owns:
+
+- relay WebSocket connection setup
+- adapting transport IO to what the crypto layer expects
+
+Near-term extension point:
+
+- this is where direct transport can later sit beside the relay transport, with selection logic above it
+
+---
+
+## Relay Architecture (`services/relay/`)
+
+The relay is intentionally narrow. It should act like a room broker and encrypted byte pipe, not an application-layer participant.
+
+### Layering
+
+```text
+cmd/relay
+  ↓
+WebSocket server / connection handling
+  ↓
+room registry + room lifecycle
+  ↓
+encrypted frame forwarding
+```
+
+### Package responsibilities
+
+#### `services/relay/cmd/relay`
+
+Owns:
+
+- process startup
+- bind address configuration
+- wiring the transport server to the room registry
+
+#### `services/relay/internal/room`
+
+Owns:
+
+- room creation and lookup
+- sender/receiver pairing
+- room lifecycle transitions
+- expiration / cleanup behavior
+
+#### `services/relay/internal/transport`
+
+Owns:
+
+- WebSocket accept/upgrade path
+- sender and receiver connection handling
+- frame relay between paired peers
+
+Design constraints:
+
+- do not decrypt payloads
+- do not reinterpret the encrypted application protocol
+- keep server state minimal and disposable
+
+Current limitations:
+
+- no explicit rate limiting yet
+- no health endpoint yet
+- no metrics endpoint yet
+
+---
+
+## Punchthrough Architecture (`lib/punchthrough/`)
+
+This module is groundwork for a future direct path. It is not yet integrated into the client runtime.
+
+### Package responsibilities
+
+#### `pkg/stun`
+
+Owns:
+
+- STUN requests/responses
+- network probing support
+- external address discovery and related typing/config
+
+#### `pkg/punch`
+
+Owns:
+
+- NAT classification
+- UDP hole-punching flow primitives
+- related config/types/errors
+
+#### `cmd/punchthrough`
+
+Owns:
+
+- operator/dev CLI entry point for probing and testing the NAT tooling
+
+Near-term architectural goal:
+
+- feed punchthrough results into the client's transport selection so the client can attempt direct transport before falling back to relay
+
+---
+
+## Admin Surface (`services/bore-admin/`)
+
+This module is intentionally only a scaffold today.
+
+What it is:
+
+- a Go module with a placeholder CLI entry point
+- a place to land relay monitoring and operator workflows later
+
+What it is not:
+
+- a working dashboard
+- a metrics system
+- a storage layer
+- an operational dependency of the relay or client
+
+Keep docs honest: treat this module as a placeholder until real features exist.
+
+---
+
+## Transfer Flow
+
+### Current verified relay flow
+
+```text
+Sender                               Relay                         Receiver
+  │                                    │                              │
+  │ 1. Create/send room                │                              │
+  │───────────────────────────────────►│                              │
+  │                                    │                              │
+  │ 2. Display full rendezvous code    │                              │
+  │                                    │                              │
+  │                                    │ 3. Receiver joins room       │
+  │                                    │◄─────────────────────────────│
+  │                                    │                              │
+  │ 4. Noise XXpsk0 handshake over encrypted transport path           │
+  │◄─────────────────────────────────────────────────────────────────►│
+  │                                    │                              │
+  │ 5. Sender streams encrypted header/chunks/end                    │
+  │─────────────────────────────────────────────────────────────────►│
+  │                                    │                              │
+  │ 6. Receiver reassembles and verifies SHA-256                     │
+  │                                    │                              │
+```
+
+### Planned direct-first flow
 
 ```text
                     ┌────────────────────┐
@@ -135,165 +327,31 @@ Sender                          Relay/Rendezvous              Receiver
                  Yes                  No
                    │                   │
             ┌──────┴──────┐    ┌───────┴───────┐
-            │ Same LAN?   │    │ Relay         │
-            └──────┬──────┘    │ (WebSocket)   │
-                   │           └───────────────┘
-            ┌──────┴──────┐
-            │             │
-          Yes            No
-            │             │
-     ┌──────┴──────┐ ┌───┴──────────┐
-     │ TCP direct  │ │ QUIC +       │
-     │             │ │ hole-punch   │
-     └─────────────┘ └──────────────┘
+            │ direct path │    │ relay path    │
+            │ via         │    │ via WebSocket │
+            │ punchthrough│    │ broker        │
+            └─────────────┘    └───────────────┘
 ```
 
-The transport mode is always reported to the user. No silent fallback.
+This selection logic is **planned**, not current behavior.
 
 ---
 
-## Cryptographic design
+## Design Rules
 
-### Key exchange: Noise Protocol XX
-
-The [Noise Protocol Framework](http://noiseprotocol.org/) with the XX handshake pattern:
-
-```text
-XX:
-  → e
-  ← e, ee, s, es
-  → s, se
-```
-
-- **XX** provides mutual authentication without pre-shared keys.
-- Both peers generate ephemeral key pairs.
-- Static keys are exchanged encrypted.
-- After handshake: both sides have a shared symmetric key.
-
-### PAKE binding
-
-The rendezvous code (e.g., `7-guitar-castle-moon`) is used as a weak shared secret for PAKE. This means:
-
-- The code isn't just a routing hint — it's a cryptographic input.
-- An attacker who doesn't know the code cannot complete the handshake.
-- An attacker who intercepts the code can attempt a man-in-the-middle attack, but the Noise handshake's transcript binding detects this.
-
-### Data encryption: ChaCha20-Poly1305
-
-After the Noise handshake completes:
-
-- Separate send/receive keys derived from the handshake output.
-- Each frame encrypted with ChaCha20-Poly1305 AEAD.
-- Nonces are counter-based (monotonically increasing).
-- Replayed or out-of-order frames are rejected.
-
-### Key material lifecycle
-
-- Ephemeral keys: generated per session, zeroized after handshake.
-- Session keys: derived from Noise output, zeroized when session ends.
-- No long-term keys stored on disk (unless implementing persistent identity, which is not planned).
+1. **Docs describe the code that exists, not the code we wish existed.**
+2. **Relay stays payload-blind.**
+3. **Rendezvous code is cryptographic input, not cosmetic metadata.**
+4. **Direct transport is optional architecture, not a precondition for shipping the relay path.**
+5. **Do not preserve dead implementations in-tree once the migration decision is made.**
 
 ---
 
-## Protocol wire format
+## Open Architectural Work
 
-### Frame structure
+- integrate punchthrough into client transport selection
+- add resumable transfer state and resume protocol rules
+- harden relay operations with rate limiting, health, and metrics
+- decide whether any future Zig layer is justified by real operator or packaging pain
 
-```text
-┌──────────────────┬───────────┬──────────────────────┐
-│  Length (4 bytes) │ Type (1)  │  Payload (variable)  │
-│  big-endian u32   │  u8 tag   │  up to 16 MiB        │
-└──────────────────┴───────────┴──────────────────────┘
-```
-
-- Length includes the type byte but not itself.
-- Maximum payload: 16 MiB (configurable down, not up).
-- All multi-byte integers are big-endian.
-
-### Message types
-
-| Tag | Name | Direction | Description |
-|-----|------|-----------|-------------|
-| 0x01 | Hello | Both | Protocol version + capabilities |
-| 0x02 | Offer | Sender→Receiver | Transfer manifest |
-| 0x03 | Accept | Receiver→Sender | Acceptance of manifest |
-| 0x04 | Reject | Receiver→Sender | Rejection with reason |
-| 0x10 | Data | Sender→Receiver | File chunk |
-| 0x11 | Ack | Receiver→Sender | Chunk acknowledgment |
-| 0x20 | Done | Sender→Receiver | Transfer complete |
-| 0xE0 | Error | Both | Error with code and message |
-| 0xF0 | Close | Both | Graceful session close |
-
----
-
-## Relay design
-
-### Principles
-
-1. **Zero-knowledge.** The relay sees encrypted bytes. It cannot read file names, content, or metadata.
-2. **Minimal state.** The relay tracks rooms (code → connection pair) and nothing else.
-3. **Self-hostable.** A single binary, minimal config, deployable anywhere.
-4. **Not the trust root.** Authentication is end-to-end between peers. The relay is just a pipe.
-
-### Room lifecycle
-
-```text
-Created → Active → Draining → Closed
-   ↓                   ↓
- Expired            Expired
-```
-
-- **Created**: sender registers, room exists but no receiver yet.
-- **Active**: both peers connected, traffic flowing.
-- **Draining**: one peer disconnected, waiting for reconnection or timeout.
-- **Closed**: both peers done or room expired.
-
-### What the relay knows
-
-| Information | Known? |
-|------------|--------|
-| Room code / session ID | Yes (routing) |
-| Sender IP address | Yes (connection) |
-| Receiver IP address | Yes (connection) |
-| Total bytes forwarded | Yes (rate limiting) |
-| File names | No |
-| File content | No |
-| Number of files | No |
-| Peer identities | No |
-| Protocol messages (decrypted) | No |
-
----
-
-## Resumability design
-
-### Resume token
-
-```text
-{session_id}:{manifest_hash}:{chunk_bitmap}
-```
-
-- **session_id**: identifies the session to resume.
-- **manifest_hash**: ensures the file set hasn't changed (prevents bait-and-switch).
-- **chunk_bitmap**: which chunks have been acknowledged.
-
-### Resume flow
-
-1. Receiver reconnects with resume token.
-2. Sender validates session ID and manifest hash.
-3. Sender sends only unacknowledged chunks.
-4. Normal integrity verification continues.
-
-Resume works across transport mode changes (e.g., started direct, resumed via relay).
-
----
-
-## Error philosophy
-
-- **Library errors are typed.** `BoreError` with specific variants for each domain.
-- **CLI errors are human-readable.** `anyhow` wrapping library errors with context.
-- **No panics in library code.** `Result` everywhere. Panics are bugs.
-- **Every error is actionable.** The user can understand what went wrong and what to do.
-
----
-
-*This document will be updated as the design evolves. See BUILD.md for what is actually implemented.*
+For the current execution plan and verification commands, see [BUILD.md](BUILD.md). For security claims and limits, see [SECURITY.md](SECURITY.md).

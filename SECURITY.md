@@ -2,124 +2,169 @@
 
 ## Current security status
 
-**bore does not yet implement any cryptographic protocol, transport encryption, or relay service.** The types and architecture described below are the target design, not the current implementation.
+bore currently implements a **real relay-based end-to-end encrypted transfer path** in the Go client.
 
-Do not use bore for sensitive transfers until the cryptographic layer is implemented, tested, and reviewed. See [BUILD.md](BUILD.md) Phase 2 and Phase 8 for the implementation and audit timeline.
+Implemented today:
+
+- Noise `XXpsk0` handshake in `client/internal/crypto`
+- HKDF-SHA256 derivation of a PSK from the rendezvous code
+- ChaCha20-Poly1305 encrypted secure channel
+- SHA-256 file integrity verification in the transfer engine
+- payload-blind relay forwarding in `services/relay/`
+
+Important limits on those claims:
+
+- the currently verified path is **relay-based**, not direct P2P
+- the relay is functional but not yet hardened with rate limiting, health endpoints, or metrics
+- the system has **not** had an external security audit yet
+- resumable transfer behavior is not implemented yet
+- bore is **not** an anonymity tool
+
+If you use bore today, treat it as an implemented encrypted transfer tool with unfinished operational hardening — not as a fully audited or production-hardened security product.
 
 ---
 
-## Planned security properties
-
-Once implemented and verified, bore aims to provide:
+## Implemented security properties
 
 ### End-to-end encryption
-- All file data encrypted between sender and receiver.
-- Relay cannot decrypt traffic.
-- Uses Noise Protocol XX for key exchange and ChaCha20-Poly1305 for data encryption.
 
-### Peer authentication
-- Both peers authenticate using the shared rendezvous code via PAKE.
-- No pre-shared keys or certificates required.
-- Man-in-the-middle attacks are detected by the Noise handshake transcript binding.
+- File data is encrypted between sender and receiver after the Noise handshake completes.
+- The relay forwards encrypted bytes and does not decrypt payloads.
+- The current cryptographic suite is `Noise_XXpsk0_25519_ChaChaPoly_SHA256`.
 
-### Forward secrecy
-- Ephemeral keys per session.
-- Compromising one session does not compromise past or future sessions.
-- Key material is zeroized after use.
+### Peer authentication via rendezvous code
 
-### Zero-knowledge relay
-- Relay forwards encrypted bytes only.
-- Relay cannot read file names, content, or metadata.
-- Relay knows: room ID, peer IP addresses, byte counts.
-- Relay does not know: file content, file names, peer identities beyond IP.
+- Both peers must know the rendezvous code.
+- The code is converted into a PSK with HKDF-SHA256 and mixed into the handshake.
+- A peer with the wrong code cannot complete the session successfully.
+
+### Forward secrecy per session
+
+- The handshake uses ephemeral key exchange.
+- Session keys are derived for the transfer session and are not intended for long-term reuse.
+- Compromise of one session should not imply compromise of unrelated sessions.
 
 ### Integrity verification
-- Per-chunk BLAKE3 hashes.
-- Full-file hash verification on completion.
-- Manifest hash prevents bait-and-switch on resume.
+
+- The encrypted channel provides authenticated encryption for in-flight frames.
+- The transfer engine verifies a final SHA-256 hash for the received file.
+- Corrupted or modified payloads should fail verification.
+
+### Payload-blind relay model
+
+The relay should know only what it needs to route the session:
+
+- room/session identifier
+- connection timing
+- sender/receiver IP addresses
+- encrypted byte counts
+
+The relay should **not** know:
+
+- plaintext file content
+- plaintext file names
+- plaintext transfer metadata carried inside encrypted messages
 
 ---
 
-## Threat model outline
+## Threat model summary
 
 ### Actors
 
 | Actor | Trust level | Capabilities |
-|-------|------------|-------------|
-| Sender | Trusted | Has files, generates code |
-| Receiver | Trusted (with code) | Knows the rendezvous code |
-| Relay operator | Untrusted | Can observe encrypted traffic, timing, metadata |
-| Network observer | Untrusted | Can observe encrypted traffic between peers/relay |
-| Active attacker | Untrusted | Can intercept, modify, or inject traffic |
+|---|---|---|
+| Sender | trusted | Has files, generates code, initiates transfer |
+| Receiver | trusted with code | Knows the rendezvous code and accepts transfer |
+| Relay operator | untrusted for content | Can observe metadata and availability, cannot read encrypted payloads |
+| Network observer | untrusted | Can observe endpoints, timing, and encrypted traffic |
+| Active attacker | untrusted | Can intercept, modify, inject, or replay traffic |
 
 ### Assets
 
-| Asset | Protection |
-|-------|-----------|
-| File content | E2E encryption (Noise + ChaCha20-Poly1305) |
-| File metadata (names, sizes) | E2E encryption (inside protocol messages) |
-| Sender/receiver identity | Not protected beyond IP — bore is not an anonymity tool |
-| Transfer timing | Not protected — observable by relay and network |
-| Rendezvous code | Short-lived, single-use, rate-limited against brute force |
+| Asset | Current protection |
+|---|---|
+| File content | End-to-end encryption after the handshake |
+| File metadata in protocol messages | Encrypted within the application channel |
+| Transfer integrity | AEAD + final SHA-256 verification |
+| Peer identity beyond IP | Not protected; bore is not an anonymity system |
+| Transfer timing / rough size | Not protected |
+| Rendezvous code | Short-lived shared secret; user must keep it confidential |
 
 ### Non-goals
 
-bore explicitly does **not** aim to provide:
+bore does **not** currently aim to provide:
 
-- **Anonymity.** bore does not hide who is communicating. Use Tor for that.
-- **Plausible deniability.** Transfers are authenticated — both sides can prove the transfer happened.
-- **Multi-party transfer.** bore is strictly two-party (sender + receiver).
-- **Long-term identity.** No persistent keys, no contact lists, no trust-on-first-use.
-- **Censorship resistance.** The relay can be blocked, and bore does not attempt to evade blocking.
-
-### Known attack surfaces
-
-| Attack | Mitigation | Status |
-|--------|-----------|--------|
-| Brute-force rendezvous code | Rate limiting, short expiry, single-use codes | Planned |
-| Man-in-the-middle | Noise XX transcript binding + PAKE | Planned |
-| Replay attack | Counter-based nonces, frame sequence validation | Planned |
-| Relay as MITM | End-to-end encryption; relay cannot decrypt | Planned |
-| Malicious file content | Out of scope — bore transfers bytes, not semantics | N/A |
-| Denial of service on relay | Rate limiting, room limits, connection timeouts | Planned |
-| Resume bait-and-switch | Manifest hash validation on resume | Planned |
+- anonymity
+- censorship resistance
+- multi-party transfer
+- long-term identity / accounts
+- malware scanning or file-content validation
+- protection against compromised endpoints
 
 ---
 
-## Reporting vulnerabilities
+## Known gaps and risks
 
-If you discover a security vulnerability in bore, please report it responsibly:
+### Relay hardening is incomplete
 
-1. **Do not** open a public GitHub issue.
-2. Email: `security@dunamismax.com` (or open a private security advisory on GitHub).
-3. Include: description of the vulnerability, reproduction steps, potential impact.
-4. We will acknowledge within 48 hours and provide a timeline for a fix.
+Not yet implemented:
 
-If the project does not yet have a dedicated security email, use GitHub's private vulnerability reporting feature.
+- rate limiting
+- health endpoint
+- metrics endpoint
+- stronger operator controls / quotas
+
+This means the relay should be treated as functional but not yet production-hardened against abuse or observability requirements.
+
+### Direct P2P path is not active yet
+
+`lib/punchthrough/` exists, but it is not wired into the current client flow. Security claims should stay scoped to the current relay-based path.
+
+### No resumable transfer protocol yet
+
+Resume-state integrity and interruption recovery are still future work. Do not claim restart-safe transfer semantics yet.
+
+### No external security review yet
+
+The code has local tests and design documentation, but no independent audit or formal review should be implied.
 
 ---
 
 ## Dependency policy
 
-- All dependencies are tracked in `Cargo.lock`.
-- `cargo audit` will be run as part of CI (Phase 8+).
-- `cargo deny` will check license compliance and known advisories.
-- Cryptographic dependencies (`snow`, `chacha20poly1305`, `blake3`) are chosen for their audit history and community trust.
-- Transitive dependency count will be monitored and minimized.
+- Dependencies are tracked per Go module via `go.mod` and `go.sum`.
+- There is **no Cargo toolchain or Rust dependency lockfile left in `main`**.
+- Crypto-relevant client dependencies should stay small, explicit, and reviewable.
+- Dependency updates should be accompanied by focused verification in the affected module.
+
+Planned hardening work:
+
+- add repeatable dependency review steps for the Go modules
+- add broader CI/security checks as the repo stabilizes
+- keep crypto and transport dependencies intentionally narrow
 
 ---
 
-## Security review timeline
+## Reporting vulnerabilities
 
-| Milestone | Phase | Description |
-|-----------|-------|-------------|
-| Threat model written | 1 | Formal threat model document |
-| Crypto implemented | 2 | Noise XX + ChaCha20-Poly1305 |
-| Fuzz testing | 8 | Protocol parser, handshake, chunks |
-| Dependency audit | 8 | cargo audit + cargo deny |
-| External review | 8 | Independent review of crypto layer |
-| Security claims published | 8 | README and docs updated with verified claims |
+If you discover a security vulnerability in bore, report it responsibly:
+
+1. **Do not** open a public GitHub issue.
+2. Email: `security@dunamismax.com` or use GitHub private vulnerability reporting.
+3. Include a description, reproduction steps, impact, and any logs or traces that matter.
+4. The project should acknowledge within 48 hours and provide a remediation timeline.
 
 ---
 
-*This policy will be updated as the security posture matures. Current status: **no security properties are implemented**.*
+## Security review status
+
+| Area | Status |
+|---|---|
+| Relay-based encrypted transfer | Implemented |
+| Threat model documentation | Present |
+| Local tests for client/relay modules | Present |
+| Direct P2P transport security review | Not applicable yet; feature not integrated |
+| Relay abuse controls | TODO |
+| External review / audit | TODO |
+
+For cryptographic implementation detail, see [`docs/crypto-design.md`](docs/crypto-design.md). For the broader threat model, see [`docs/threat-model.md`](docs/threat-model.md).

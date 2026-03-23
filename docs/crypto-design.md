@@ -2,223 +2,190 @@
 
 ## Purpose
 
-This document describes bore's planned cryptographic approach. It is a design document, not a claim of implementation. The actual crypto layer will be implemented in Phase 2. No security properties described here are available until implementation, testing, and review are complete.
+This document describes bore's **current Go cryptographic design** for the relay-based transfer path and the near-term decisions still open around future expansion.
+
+It is not a claim of formal verification or external audit. It is the implementation-level design reference for what the Go client is doing today.
 
 ---
 
 ## Overview
 
-bore's cryptographic protocol has two layers:
+bore's current cryptographic path has two layers:
 
-1. **Key exchange:** Noise Protocol Framework (XX pattern) with PAKE binding to the rendezvous code
-2. **Data channel:** ChaCha20-Poly1305 AEAD for all post-handshake communication
+1. **Handshake:** Noise `XXpsk0` over Curve25519 / ChaChaPoly / SHA-256
+2. **Data channel:** ChaCha20-Poly1305 authenticated encryption for post-handshake frames
 
-The rendezvous code serves as a weak shared secret for PAKE — it's a cryptographic input, not just a routing hint. This means an attacker who doesn't know the code cannot complete the handshake, even if they can intercept all network traffic.
+The rendezvous code is not just a routing hint. It is converted into a pre-shared key and mixed into the handshake, so the code participates directly in session authentication.
+
+Current implementation location:
+
+- `client/internal/crypto`
+- `client/internal/code`
+- `client/internal/rendezvous`
 
 ---
 
-## Key exchange: Noise Protocol XX
+## Handshake design
 
-### Why Noise?
+### Protocol suite
 
-The [Noise Protocol Framework](http://noiseprotocol.org/) is a well-studied, composable framework for building crypto protocols. It provides:
-
-- Formal security proofs for each handshake pattern
-- Defense against replay, reflection, and key-compromise attacks
-- Simple, auditable implementations (Rust: `snow` crate)
-- No dependency on PKI, certificates, or trusted third parties
-
-### Why the XX pattern?
+Current suite:
 
 ```text
-XX handshake:
-  → e
-  ← e, ee, s, es
-  → s, se
+Noise_XXpsk0_25519_ChaChaPoly_SHA256
 ```
 
-The XX pattern provides **mutual authentication without pre-shared keys**. Both peers generate ephemeral key pairs and exchange static keys, encrypted, during the handshake. This is the right choice for bore because:
+What this means in practice:
 
-- Neither peer knows the other's identity in advance
-- Both peers need to authenticate (not just one)
-- No certificate infrastructure exists or is desired
-- The handshake is compact (3 messages)
+- **XX** gives mutual authentication without a pre-existing identity registry
+- **psk0** mixes in a rendezvous-code-derived PSK at the start of the handshake
+- **25519** provides elliptic-curve Diffie-Hellman
+- **ChaChaPoly** provides AEAD encryption
+- **SHA-256** is used in the Noise hash / key schedule
 
-### PAKE binding to the rendezvous code
+### Why this fits bore
 
-The rendezvous code (e.g., `7-apple-beach-crown`) is bound to the Noise handshake as a pre-shared key (PSK) mixed into the handshake state. This means:
+- sender and receiver do not know each other through a PKI or account system
+- both peers need to authenticate possession of the rendezvous code
+- the handshake stays compact and fits the transient transfer model
+- relay infrastructure is not part of the trust root
 
-1. The code contributes entropy to the session key derivation
-2. A peer with the wrong code derives different session keys
-3. The handshake fails cleanly (authentication error) if codes don't match
-4. The code's entropy directly affects brute-force resistance
+### Rendezvous-code binding
 
-**Approach:** Use the Noise `XXpsk0` or `XXpsk3` pattern variant, where the PSK is derived from the rendezvous code via a key derivation function. Alternatively, use the standard XX pattern and mix the code-derived key into the handshake prologue, ensuring it's authenticated by the transcript hash.
+The rendezvous code string is converted into a 32-byte PSK with HKDF-SHA256 and mixed into the Noise handshake.
 
-**Decision pending:** The exact PSK integration approach needs to be finalized during Phase 2 implementation, after evaluating `snow`'s PSK support and the security properties of each approach.
-
-### Key derivation from the rendezvous code
-
-The rendezvous code is short and low-entropy (~34 bits default). It cannot be used directly as a cryptographic key. Instead:
+Conceptually:
 
 ```text
-code_string = "7-apple-beach-crown"
-psk = HKDF-SHA256(
-    salt = "bore-pake-v0",
-    ikm  = code_string.as_bytes(),
-    info = "bore handshake psk"
-)
+code_string -> HKDF-SHA256 -> 32-byte PSK -> Noise XXpsk0 handshake
 ```
 
-This produces a 256-bit PSK suitable for mixing into the Noise handshake state. The HKDF step doesn't add entropy — it's a formatting step. The actual entropy is still ~34 bits from the code.
+This means:
 
-### Entropy implications
-
-The code's entropy budget is documented in detail in the code module (`bore-core/src/code.rs`). Summary:
-
-| Words | Entropy (approx) | Brute-force at 1/sec | Brute-force at 100/sec |
-|-------|-------------------|----------------------|------------------------|
-| 2 | ~26 bits | ~2.1 years | ~7.8 days |
-| 3 | ~34 bits | ~544 years | ~5.4 years |
-| 4 | ~42 bits | ~139,000 years | ~1,390 years |
-| 5 | ~50 bits | ~35.7 million years | ~357,000 years |
-
-**Online brute-force is the relevant attack.** The PSK is mixed into the handshake — an attacker must complete the full handshake to test each guess. This is inherently online (requires interaction with the peer or relay). Combined with:
-
-- Single-use codes (one attempt per code)
-- Short expiry (5 minutes default)
-- Rate limiting on the relay
-
-The effective attack window is very narrow even for 2-word codes. 3 words is the default because it provides a comfortable margin for sensitive use cases.
-
-**Offline brute-force is not possible** unless the attacker records a full handshake transcript. Even then, the Noise XX pattern provides forward secrecy through ephemeral keys — past session keys cannot be recovered from the transcript alone. However, if the attacker records the transcript and later obtains the code, they could derive the session key. This is an accepted risk, mitigated by code expiry and single-use semantics.
+- a peer with the wrong code derives the wrong PSK
+- the handshake fails if sender and receiver do not share the same code
+- the code is a real authentication input, not cosmetic metadata
 
 ---
 
-## Data channel: ChaCha20-Poly1305
+## Rendezvous-code entropy
 
-### Why ChaCha20-Poly1305?
+The code format is implemented in `client/internal/code`.
 
-- **Performance:** Fast in software without hardware AES support (relevant for ARM devices, older hardware)
-- **Safety:** No padding oracle attacks, no IV reuse concerns with counter-based nonces
-- **Standard:** IETF RFC 8439, widely deployed in TLS 1.3 and WireGuard
-- **Rust ecosystem:** `chacha20poly1305` crate is well-audited and maintained
+Entropy sources:
 
-### Encryption scheme
+- channel number: `1..999`
+- 2-5 words from a 256-word list
 
-After the Noise XX handshake completes, both peers derive symmetric keys:
+Approximate entropy model:
 
-```text
-handshake_output = Noise handshake result
-send_key = HKDF-SHA256(handshake_output, info="bore send")
-recv_key = HKDF-SHA256(handshake_output, info="bore recv")
-```
+| Words | Entropy (approx) |
+|---|---:|
+| 2 | ~26 bits |
+| 3 | ~34 bits |
+| 4 | ~42 bits |
+| 5 | ~50 bits |
 
-Each direction uses its own key. The sender's `send_key` is the receiver's `recv_key` and vice versa.
+Default today:
 
-### Nonce handling
+- **3 words**
+- **5 minute default expiry policy** in the code model
+- **single-use session intent** in the rendezvous design
 
-- **Counter-based nonces:** Each frame uses a monotonically increasing 96-bit nonce
-- **No nonce reuse:** Counter starts at 0 and increments for each frame. Maximum ~2^32 frames per session (counter is 32-bit, padded to 96 bits)
-- **Replay detection:** Receiver tracks the highest nonce seen. Frames with nonces ≤ the highest seen are rejected
-- **Out-of-order tolerance:** None in the initial implementation. Frames must arrive in order. This is acceptable for TCP/QUIC transports which provide ordered delivery
+Operational implication:
 
-### Frame encryption
-
-Each protocol frame (after the handshake) is encrypted:
-
-```text
-plaintext_frame = [type_tag (1 byte)] [payload (variable)]
-nonce = counter.to_le_bytes() padded to 96 bits
-aad = [frame_counter (8 bytes)] [session_id (16 bytes)]
-ciphertext = ChaCha20-Poly1305.encrypt(key, nonce, aad, plaintext_frame)
-wire_frame = [length (4 bytes)] [nonce (12 bytes)] [ciphertext] [tag (16 bytes)]
-```
-
-The Associated Authenticated Data (AAD) includes the frame counter and session ID, binding each frame to its position in the stream and its session.
-
-### Key rotation
-
-For long transfers (>2^32 frames or >1 TB), key rotation is necessary to avoid nonce exhaustion:
-
-- After 2^31 frames (safety margin before 2^32 limit), both sides derive new keys:
-
-```text
-new_key = HKDF-SHA256(current_key, info="bore rekey", salt=frame_counter)
-```
-
-- Key rotation is coordinated via a Rekey protocol message (added in Phase 2)
-- Both sides must agree on the rotation point
-
-**Decision pending:** The exact key rotation trigger and coordination mechanism will be finalized during Phase 2.
+- online brute force is the relevant threat model, not direct offline key guessing in the abstract
+- keeping code lifetime short and adding relay-side rate limiting remain important future hardening steps
 
 ---
 
-## Key material lifecycle
+## Secure channel design
 
-### Ephemeral keys
+After the Noise handshake completes, the peers use a secure channel abstraction in `client/internal/crypto`.
 
-- Generated per session using the system's CSPRNG
-- Used during the Noise XX handshake only
-- **Zeroized** immediately after the handshake completes
-- Never written to disk
+Current properties:
 
-### Session keys
+- ChaCha20-Poly1305 authenticated encryption
+- counter-based nonces
+- encrypted application frames sent over the transport
+- ordered delivery assumptions that fit the current relay path
 
-- Derived from the Noise handshake output
-- Used for the duration of the transfer
-- **Zeroized** when the session ends (complete, failed, or cancelled)
-- Never written to disk in plaintext
+The channel is transport-agnostic at the IO boundary:
 
-### PSK (code-derived)
-
-- Derived from the rendezvous code via HKDF
-- Mixed into the Noise handshake state
-- **Zeroized** after the handshake completes
-- Never stored — re-derived from the code if needed
-
-### Zeroization
-
-All sensitive key material is zeroized on drop using the `zeroize` crate:
-
-- `Zeroize` derive on all key-holding types
-- `ZeroizeOnDrop` for automatic cleanup
-- Explicit zeroize calls at session boundaries as defense-in-depth
+- today it runs over the relay transport
+- later it can run over a direct path if the client integrates `lib/punchthrough/`
 
 ---
 
-## Crate dependencies (planned)
+## Transfer integrity
 
-| Crate | Purpose | Notes |
-|-------|---------|-------|
-| `snow` | Noise Protocol implementation | Well-audited, maintained, supports PSK patterns |
-| `chacha20poly1305` | AEAD encryption | RustCrypto, audited, IETF-standard |
-| `hkdf` | Key derivation | RustCrypto, standard HKDF-SHA256 |
-| `zeroize` | Key material cleanup | RustCrypto, prevents key leakage |
-| `rand` | CSPRNG for key generation | Standard Rust randomness |
+The transfer engine in `client/internal/engine` adds an integrity layer on top of the encrypted channel:
 
-All planned crypto dependencies come from the RustCrypto ecosystem or are established, audited projects. No custom cryptographic primitives.
+- sender computes SHA-256 for the file being sent
+- receiver reassembles the file
+- receiver verifies the final SHA-256 before reporting success
 
----
+This gives bore two integrity layers:
 
-## What this design does NOT cover
-
-- **Implementation details** — those come in Phase 2
-- **Performance characteristics** — benchmarking comes after implementation
-- **Formal verification** — out of scope for this project
-- **Quantum resistance** — not a current goal; the Noise framework can be upgraded to post-quantum patterns when mature implementations exist
-- **Side-channel resistance** — we rely on the audited implementations in `snow` and `chacha20poly1305` for this
+1. authenticated encryption for the transport frames
+2. final file hash verification for the delivered artifact
 
 ---
 
-## Open questions for Phase 2
+## Relay knowledge boundary
 
-1. **PSK pattern choice:** `XXpsk0`, `XXpsk3`, or prologue binding? Needs evaluation against `snow`'s API.
-2. **Key rotation trigger:** Frame count vs. byte count vs. time-based? Frame count is simplest.
-3. **Nonce format:** Counter-only or counter + random component? Counter-only is sufficient for ordered transports.
-4. **AAD contents:** Session ID + frame counter is the minimum. Should we include protocol version?
-5. **Error messages after handshake:** Should error messages be encrypted too? Yes — everything after handshake should be encrypted, including control messages.
+The relay is intentionally outside the trust boundary for plaintext.
+
+The relay can know:
+
+- room/session identifier
+- connection timing
+- sender/receiver network addresses
+- total encrypted byte counts
+
+The relay should not know:
+
+- plaintext file contents
+- plaintext file names
+- decrypted transfer metadata exchanged inside the secure channel
+
+This is why the relay must remain a narrow byte-forwarding service and not absorb protocol logic that requires decryption.
 
 ---
 
-*This document will be updated as implementation decisions are made in Phase 2. It represents the current design intent, not a security guarantee.*
+## Implementation dependencies
+
+Current client dependencies relevant to crypto and transport:
+
+| Dependency | Purpose |
+|---|---|
+| `github.com/flynn/noise` | Noise handshake implementation |
+| `golang.org/x/crypto` | HKDF and related crypto support |
+| `nhooyr.io/websocket` | WebSocket transport used by the relay path |
+
+Design rule:
+
+- keep the dependency surface small and explicit
+- avoid broad, overlapping crypto stacks unless there is a strong reason
+
+---
+
+## What is not implemented yet
+
+- direct-transport integration through `lib/punchthrough/`
+- resumable transfer protocol state
+- relay-side rate limiting and broader anti-abuse controls
+- external crypto review or audit
+
+These gaps matter because they limit what claims the repo can make today.
+
+---
+
+## Open follow-up questions
+
+1. how should direct-transport negotiation be expressed without weakening the current relay-based path?
+2. what resume-state format should be used once resumable transfer is implemented?
+3. what hardening checks should become mandatory in CI for the crypto-relevant Go modules?
+4. when does the relay need explicit key/metadata lifecycle documentation beyond the current payload-blind design?
+
+For the broader threat model, see [`threat-model.md`](threat-model.md). For current security posture, see [`../SECURITY.md`](../SECURITY.md).

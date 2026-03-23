@@ -1,8 +1,5 @@
-# Rust
+# Local build caches and binaries
 /target
-Cargo.lock.bak
-
-# Go
 /client/bore
 /services/relay/relay
 /services/bore-admin/bore-admin

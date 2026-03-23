@@ -258,8 +258,8 @@ If the sender or receiver's machine is compromised, bore cannot help. An attacke
 │                 Sender's machine                     │
 │                                                     │
 │  ┌─────────────┐    ┌──────────────────────────┐   │
-│  │  Filesystem  │───►│  bore-cli / bore-core     │   │
-│  │  (plaintext) │    │  (plaintext → encrypted)  │   │
+│  │  Filesystem  │───►│  bore Go client          │   │
+│  │  (plaintext) │    │  (plaintext → encrypted) │   │
 │  └─────────────┘    └──────────┬───────────────┘   │
 │                                │                    │
 └────────────────────────────────┼────────────────────┘
@@ -274,8 +274,8 @@ If the sender or receiver's machine is compromised, bore cannot help. An attacke
 ┌────────────────────────────────┼────────────────────┐
 │                                │                    │
 │  ┌──────────────────────────┐  │                    │
-│  │  bore-cli / bore-core     │◄┘                    │
-│  │  (encrypted → plaintext)  │                      │
+│  │  bore Go client          │◄┘                    │
+│  │  (encrypted → plaintext) │                      │
 │  └──────────┬───────────────┘                      │
 │             │                                       │
 │  ┌──────────▼──┐                                   │

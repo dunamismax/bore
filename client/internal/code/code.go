@@ -18,7 +18,7 @@ import (
 	"strings"
 )
 
-// Constants matching bore-core/src/code.rs.
+// Constants for the current Go rendezvous code model.
 const (
 	MinWords          = 2
 	MaxWords          = 5

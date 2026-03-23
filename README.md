@@ -1,44 +1,38 @@
 # bore
 
-**Privacy-first file transfer. No accounts, no cloud, no trust required.**
+**Privacy-first file transfer. No accounts, no cloud, no trust in the relay.**
 
-bore is a direct-first file transfer tool for moving files between two machines with a short human-readable code. When a direct path is not available, it falls back to a self-hostable encrypted relay that cannot read the payload.
+bore moves files between two machines with a short human-readable rendezvous code. The current shipped path is a Go client that performs an end-to-end encrypted relay-based transfer through a self-hostable Go relay. Future direct transport and any later operator tooling stay on the Go / Zig / C path only.
 
 ## Status
 
-**Current truth:** the active client rewrite lives in `client/` and is implemented in **Go**. The relay and NAT tooling are also in **Go**. The long-term stack for this repo is **Zig / Go / C only**.
+**Current truth:**
 
-What works today:
+- the active client lives in `client/` and is implemented in **Go**
+- the relay lives in `services/relay/` and is implemented in **Go**
+- NAT tooling lives in `lib/punchthrough/` and is implemented in **Go**
+- `services/bore-admin/` is a **Go scaffold**, not a real admin surface yet
+- the tracked Rust implementation has been **removed from main**
+- the repo direction is **Go now**, with **Zig** or **C** only where they later earn their keep
 
-- relay-based end-to-end encrypted transfer
-- working `bore send` and `bore receive` CLI flow in `client/`
+## What works today
+
+- `bore send` and `bore receive` CLI flow in `client/`
+- rendezvous code generation and parsing
 - Noise `XXpsk0` handshake bound to the rendezvous code
-- SHA-256 integrity verification
-- self-hostable Go relay
-- standalone NAT probing / hole-punching groundwork in `lib/punchthrough/`
+- ChaCha20-Poly1305 encrypted transfer channel
+- SHA-256 file integrity verification
+- self-hostable WebSocket relay in `services/relay/`
+- standalone NAT probing and hole-punching groundwork in `lib/punchthrough/`
 
-What is not wired end-to-end yet:
+## What is still TODO
 
-- direct P2P transfer path in the client
+- direct P2P transport wired into the client path
 - resumable transfers
-- admin dashboard beyond scaffold state
-
-## Architecture Now
-
-bore currently has one active implementation lane:
-
-- **Go client** in `client/`
-- **Go relay** in `services/relay/`
-- **Go NAT tooling** in `lib/punchthrough/`
-- **Go admin scaffold** in `services/bore-admin/`
-
-Planned architecture direction:
-
-- **Go** for protocol, client implementation, relay, NAT, and service logic
-- **Zig** for future local/operator-facing native tooling if it clearly improves the UX or packaging story
-- **C** only for leaf dependencies, FFI boundaries, or portability cases that justify it
-
-Legacy Rust crates remain in `crates/` strictly as migration/reference material. They are **not** the target architecture and should not receive new feature work.
+- directory transfer
+- relay rate limiting, health endpoints, and metrics
+- admin tooling beyond scaffold status
+- security hardening and external review beyond current local verification
 
 ## Components
 
@@ -47,10 +41,9 @@ Legacy Rust crates remain in `crates/` strictly as migration/reference material.
 | `bore` client | Go | `client/` | active | Rendezvous, handshake, encrypted transfer, CLI |
 | `relay` | Go | `services/relay/` | active | WebSocket room broker for encrypted payload forwarding |
 | `punchthrough` | Go | `lib/punchthrough/` | active but not integrated | NAT probing and UDP hole-punching primitives |
-| `bore-admin` | Go | `services/bore-admin/` | scaffold | Relay monitoring / operations surface |
-| legacy client reference | Rust | `crates/` | frozen | Protocol/reference history during migration |
+| `bore-admin` | Go | `services/bore-admin/` | scaffold | Future relay monitoring and operator tooling |
 
-## Quick Start
+## Quick start
 
 ### 1. Build the relay
 
@@ -98,9 +91,9 @@ cd client
 ./bore receive Ahcj7nQZclo-j15A_xGS8w-868-outer-crane-crane --relay http://127.0.0.1:8080
 ```
 
-## Build And Test
+## Build and test
 
-### Go client
+### Client
 
 ```bash
 cd client
@@ -131,11 +124,11 @@ cd services/bore-admin
 go build ./cmd/bore-admin
 ```
 
-## Repository Layout
+## Repository layout
 
 ```text
 .
-├── client/                  # active Go client rewrite
+├── client/                  # active Go client
 │   ├── cmd/bore/
 │   └── internal/
 │       ├── code/
@@ -145,39 +138,37 @@ go build ./cmd/bore-admin
 │       └── transport/
 ├── services/
 │   ├── relay/               # active Go relay service
-│   └── bore-admin/          # future ops/admin surface
+│   └── bore-admin/          # truthful scaffold only
 ├── lib/
-│   └── punchthrough/        # NAT probing and hole-punching tooling
-├── crates/                  # legacy Rust reference implementation
-├── ARCHITECTURE.md          # design notes (needs rewrite follow-up)
-├── BUILD.md                 # execution manual / current-state truth
-└── REWRITE_TRACKER.md       # migration and resume tracker
+│   └── punchthrough/        # Go NAT tooling
+├── docs/
+│   ├── crypto-design.md
+│   └── threat-model.md
+├── ARCHITECTURE.md
+├── BUILD.md
+├── REWRITE_TRACKER.md
+└── SECURITY.md
 ```
 
-## Migration Plan
+## Near-term roadmap
 
-### Phase A — current
+### Current lane
 
-- Keep the Go client as the active implementation
-- Keep legacy Rust only as a frozen reference
-- Make docs truthful
-- Verify the relay-based Go path end-to-end
-
-### Phase B — next
-
-- integrate direct transport via `lib/punchthrough/`
+- keep the relay-based Go client stable and honest
+- integrate `lib/punchthrough/` into transport selection
 - add resumable transfer state
 - harden relay operations and observability
 
-### Phase C — cleanup
+### Later, only if justified
 
-- remove the Rust crates and Cargo files once the Go path is unquestionably the keeper
-- rewrite `ARCHITECTURE.md` and `SECURITY.md` around the new reality
+- Zig for local/operator-facing tooling or packaging improvements
+- C only for leaf dependencies or explicit interoperability boundaries
 
 ## Notes
 
-- The rendezvous code is a cryptographic input to the Noise handshake, not just a routing token.
-- The relay brokers connections and forwards encrypted bytes; it should remain payload-blind.
+- The rendezvous code is a cryptographic input to the handshake, not just a routing token.
+- The relay brokers connections and forwards encrypted bytes; it should stay payload-blind.
+- Rust is no longer an in-tree reference. If history matters, use git history, not dead source left in `main`.
 - If docs and code disagree, the docs are stale. Fix both in the same change.
 
-For the detailed execution plan and rewrite handoff, start with [`BUILD.md`](BUILD.md) and [`REWRITE_TRACKER.md`](REWRITE_TRACKER.md).
+For the execution manual and current migration tracker, start with [`BUILD.md`](BUILD.md) and [`REWRITE_TRACKER.md`](REWRITE_TRACKER.md).
