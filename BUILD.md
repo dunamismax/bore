@@ -233,6 +233,70 @@ Expected result:
 
 ---
 
+## Phase Dashboard
+
+### Phase 0 — relay-based encrypted transfer path
+
+**Status:** done / checked
+
+Checklist:
+
+- [x] client rendezvous code generation and parsing exist
+- [x] Noise `XXpsk0` handshake exists
+- [x] encrypted relay-based file transfer works
+- [x] relay room brokering and `/healthz` + `/status` endpoints exist
+- [x] `bore-admin status` exists
+- [x] smoke flow proves sender, receiver, and SHA-256 match
+
+### Phase 1 — direct-path integration
+
+**Status:** planned
+
+Checklist:
+
+- [ ] integrate `lib/punchthrough/` into client transport selection
+- [ ] add coordination/signaling needed to attempt direct paths safely
+- [ ] keep relay fallback as the reliable default path
+- [ ] add deterministic verification for direct-path success and relay fallback
+
+Exit criteria:
+
+- direct mode is real and verified, or the docs still call relay the only shipped path
+
+### Phase 2 — transfer durability
+
+**Status:** planned
+
+Checklist:
+
+- [ ] add resumable transfer state
+- [ ] add interruption-recovery tests
+- [ ] add directory transfer only if it stays explicit and composable
+- [ ] keep file integrity guarantees obvious in operator output
+
+### Phase 3 — relay hardening
+
+**Status:** planned
+
+Checklist:
+
+- [ ] add relay rate limiting
+- [ ] add quotas or resource controls
+- [ ] add metrics endpoint and operator-facing counters
+- [ ] tighten deployment/service packaging rails
+
+### Phase 4 — operator surface
+
+**Status:** planned
+
+Checklist:
+
+- [ ] expand `bore-admin` beyond simple status polling
+- [ ] add useful historical/operator views only if they solve a real relay problem
+- [ ] add alerting/config basics without turning bore into a control-plane platform
+
+---
+
 ## Focused Verification Checklist
 
 Use the narrowest verification that proves the current claim:
