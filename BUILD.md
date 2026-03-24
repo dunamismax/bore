@@ -2,16 +2,38 @@
 
 ## Purpose
 
-This is the execution manual for bore's current lane.
+This is the execution manual for bore's active build lane.
 
 Use it to answer four questions quickly:
 
 1. what the repo actually builds now
-2. what is shippable today
-3. what is still limited or TODO
-4. what the next correct move is
+2. what is verified and shippable today
+3. what is still open, risky, or deliberately deferred
+4. what the next highest-leverage move is
 
 If this file and the code disagree, fix both in the same change.
+
+---
+
+## Execution Posture
+
+bore is **active**, not archival.
+
+Phase 0 shipped a real, usable relay-based path. That is progress, not finish line energy. The repo still has obvious product and systems work in front of it:
+
+- direct transport is scaffolded but not yet real in the shipped client path
+- transfers are still single-file and non-resumable
+- relay operations are functional but not yet hardened
+- the browser and operator surfaces are intentionally narrow and should stay honest while the runtime grows
+
+Treat this document like a live program, not a retrospective. Do not let the existence of a working relay path make the repo read “done forever.”
+
+### Recommended build order unless a bug/security issue interrupts
+
+1. make direct-path transport real and measurable
+2. make single-file transfer durable enough to resume cleanly
+3. harden relay operations and verification discipline
+4. deepen operator tooling only where runtime reality justifies it
 
 ---
 
@@ -36,15 +58,19 @@ bore currently ships a relay-based encrypted file transfer path plus a real in-r
 - `bore-admin status` against the relay status endpoint
 - standalone punchthrough probing primitives and CLI
 
-### What is not done yet
+### What is still not done
 
-- direct transport integrated into the client path
+- direct transport integrated end-to-end into the client path
 - resumable transfers
 - directory transfer
 - relay rate limiting, quotas, and metrics
 - authenticated or write-capable browser workflows
 - broader operator tooling beyond status snapshots
 - external security review and production hardening
+
+### Hard truth to preserve in all docs
+
+The only verified transfer path today is **relay-based**. Direct transport exists as groundwork and integration scaffolding, not as current shipped runtime behavior.
 
 ---
 
@@ -60,7 +86,7 @@ Current implementation truth:
 
 Doctrine for future work:
 
-- if Bore later needs local persistence, start with SQLite and a relational schema
+- if bore later needs local persistence, start with SQLite and a relational schema
 - if the browser surface later earns authenticated write-heavy workflows, keep it on SQLite with handwritten SQL migrations and queries
 - keep Go-side SQL explicit and boring before adding heavier tooling
 - do not invent a document-store pivot for relay history, resume metadata, or operator state
@@ -94,7 +120,7 @@ bore/
 
 ### `cmd/bore` + `internal/client/`
 
-Status: working relay-based transfer path
+Status: working relay-based transfer path with direct-path scaffolding under it
 
 What exists:
 
@@ -111,11 +137,11 @@ What is still missing:
 - direct transport that works end-to-end
 - resume support
 - directory transfer
-- richer progress and history handling
+- richer progress and transfer history handling
 
 ### `cmd/relay` + `internal/relay/`
 
-Status: functional room broker
+Status: functional room broker and embedded HTTP surface
 
 What exists:
 
@@ -134,10 +160,11 @@ What is still missing:
 - metrics endpoint
 - stronger operator-facing resource controls
 - deployment and service packaging artifacts
+- clearer production-hardening defaults
 
 ### `web/`
 
-Status: active, intentionally thin
+Status: active, intentionally thin, already useful
 
 What exists:
 
@@ -157,7 +184,7 @@ What is still missing:
 
 ### `cmd/punchthrough` + `internal/punchthrough/`
 
-Status: partial, not integrated into the client flow
+Status: partial, promising, not integrated into the client flow yet
 
 What exists:
 
@@ -171,10 +198,11 @@ What is still missing:
 - client integration
 - coordination and signaling
 - broader real-world network validation
+- evidence that direct mode succeeds often enough to change product claims
 
 ### `cmd/bore-admin`
 
-Status: active, minimal
+Status: active, minimal, intentionally not a control plane
 
 What exists:
 
@@ -286,6 +314,28 @@ Expected result:
 
 ---
 
+## Milestone Map
+
+These are the real milestones still in front of the repo.
+
+### M1 — direct path is real, not just scaffolded
+
+Success means the client can attempt a direct path, explain when it fails, and fall back to relay without hand-waving.
+
+### M2 — transfer durability is real
+
+Success means a single interrupted transfer can resume or cleanly restart with explicit rules and tests.
+
+### M3 — relay ops are credibly hardened
+
+Success means the relay has rate limits, timeouts, metrics, and a clearer production posture.
+
+### M4 — operator surfaces stay honest while gaining depth
+
+Success means `bore-admin` and the browser surface grow only where they solve real relay/operator problems.
+
+---
+
 ## Phase Dashboard
 
 ### Phase 0 — relay-based encrypted transfer path
@@ -301,9 +351,13 @@ Checklist:
 - [x] `bore-admin status` exists
 - [x] relay-served browser surface exists
 
+Reality check:
+
+- do not treat Phase 0 completion as repo completion
+
 ### Phase 1 — direct-path integration
 
-Status: in progress
+Status: active, highest-leverage unfinished runtime lane
 
 Checklist:
 
@@ -312,10 +366,13 @@ Checklist:
 - [x] direct transport stub implementing `Dialer`
 - [x] selector with direct-first and relay-fallback logic
 - [x] rendezvous flow wired to `Dialer`
-- [ ] integrate `internal/punchthrough/` into direct transport for NAT hole-punching
-- [ ] add relay-coordinated signaling to exchange peer addresses
-- [ ] add reliability and framing over UDP for direct transport
-- [ ] add deterministic verification for direct-path success and relay fallback
+- [ ] define the relay-coordinated peer-candidate exchange needed for direct attempts
+- [ ] publish and consume direct-path candidate data during rendezvous
+- [ ] wire `internal/punchthrough/` STUN and NAT discovery into direct dial attempts
+- [ ] add UDP reliability/framing semantics suitable for encrypted file transfer
+- [ ] record why direct mode fell back so tests and operators can explain the downgrade
+- [ ] add deterministic verification for direct-path success and relay fallback behavior
+- [ ] prove the selector still lands on the existing relay path cleanly when direct mode is impossible
 
 Exit criteria:
 
@@ -323,24 +380,36 @@ Exit criteria:
 
 ### Phase 2 — transfer durability
 
-Status: planned
+Status: planned, still essential
 
 Checklist:
 
-- [ ] add resumable transfer state
-- [ ] add interruption-recovery tests
-- [ ] add directory transfer only if it stays explicit and composable
+- [ ] choose and document the resume-state shape before writing code blindly
+- [ ] persist enough sender/receiver state to resume a single-file transfer safely
+- [ ] define restart vs resume rules when metadata or digests do not match
+- [ ] add interruption-recovery tests for relay-based transfers first
+- [ ] add directory transfer only after single-file resume semantics are solid and explicit
+
+Exit criteria:
+
+- a stopped single-file transfer can resume or restart with deterministic behavior and tests
 
 ### Phase 3 — relay hardening
 
-Status: planned
+Status: planned, operationally important
 
 Checklist:
 
-- [ ] add relay rate limiting
-- [ ] add quotas or resource controls
+- [ ] add explicit rate limiting around room creation, room joins, and connection churn
+- [ ] add quotas or stronger resource controls for room occupancy and message pressure
+- [ ] add explicit HTTP server timeouts and tighten transport guardrails
 - [ ] add metrics endpoint and operator-facing counters
+- [ ] add admin-only profiling hooks only if they earn their keep operationally
 - [ ] tighten deployment and service packaging rails
+
+Exit criteria:
+
+- the relay reads as deliberately hardened, not merely functional
 
 ### Phase 4 — browser and operator surface
 
@@ -351,8 +420,13 @@ Checklist:
 - [x] relay-served browser surface under `web/`
 - [x] same-origin read-only status page
 - [x] product story aligned with the actual relay-based runtime
-- [ ] decide whether the browser surface should stay static and read-only or grow authenticated workflows later
-- [ ] add browser-level smoke coverage only if the page surface becomes operationally critical
+- [ ] decide whether the browser surface should stay static and read-only until an auth story exists
+- [ ] add browser-level smoke coverage for `/` and `/ops/relay` if those pages become operationally critical
+- [ ] surface direct/fallback runtime state in the UI only after the transport truth exists underneath it
+
+Exit criteria:
+
+- the browser surface remains truthful while still feeling intentional and useful
 
 ### Phase 5 — operator tooling depth
 
@@ -360,24 +434,32 @@ Status: planned
 
 Checklist:
 
-- [ ] expand `bore-admin` only when the operator story truly needs it
+- [ ] decide whether relay history belongs in `bore-admin`, the browser surface, or neither
 - [ ] add useful historical views only if they solve a real relay problem
-- [ ] add alerting and configuration basics without turning bore into a control plane
+- [ ] add alerting and configuration basics without turning bore into a generic control plane
+- [ ] keep any persisted operator history small and relational if it is added later
 
-### Phase 6 — tech stack alignment
+Exit criteria:
 
-Status: planned
+- operator tooling solves real relay/operator pain instead of inventing dashboard theater
+
+### Phase 6 — verification and release discipline
+
+Status: active foundation, unfinished standards
 
 Checklist:
 
-- [x] root `.github/workflows/ci.yml` runs Go verification from the consolidated module layout
+- [x] root `.github/workflows/ci.yml` runs component verification from the consolidated module layout
 - [ ] add `golangci-lint run` to CI
 - [ ] add `govulncheck ./...` to CI
 - [ ] cache Bun dependencies for the `web/` job
-- [ ] add relay metrics and admin-only profiling endpoints
-- [ ] add explicit HTTP server timeouts to the relay
 - [ ] add fuzz targets for rendezvous code and transfer frame parsing
-- [ ] add a root task runner if the command surface grows large enough
+- [ ] add a root task runner only if the command surface grows large enough to justify it
+- [ ] keep `README.md`, `BUILD.md`, `ARCHITECTURE.md`, and `SECURITY.md` aligned whenever runtime claims change
+
+Exit criteria:
+
+- the repo proves its claims with repeatable checks and fewer hand-maintained assumptions
 
 ---
 
@@ -389,7 +471,8 @@ Use the narrowest verification that proves the current claim.
 
 - re-read the touched docs for consistency
 - confirm current-state sections only describe implemented behavior
-- confirm planned sections are explicitly labeled as planned work
+- confirm planned sections are explicitly labeled as planned or active work
+- confirm the doc still reads like an active program rather than a frozen status note
 
 ### Web changes
 
@@ -440,18 +523,23 @@ Run every affected command above, then verify the docs still match the code path
 5. Keep the browser surface honest and narrow. New web/UI work should support the real product or operator story, not invent a control plane the runtime does not have.
 6. Run the narrowest meaningful verification first. Broaden only when the change surface demands it.
 7. If you change architecture or security claims, update `BUILD.md`, `ARCHITECTURE.md`, and `SECURITY.md` in the same pass.
+8. If Phase 0 is the only thing that looks finished in the doc, the doc is doing its job; the repo still is not finished.
 
 ---
 
 ## Immediate Next Moves
 
-### Highest-leverage path
+### Default next lane
 
-1. integrate `internal/punchthrough/` into client transport selection
-2. add resumable transfer state
-3. add relay rate limiting and metrics
-4. decide how much operator depth belongs in `bore-admin` versus the browser surface
-5. keep documentation and embedded web assets aligned as those features land
+If you are choosing the next substantive feature lane, pick **Phase 1 direct-path integration** before broadening the UI or operator tooling.
+
+### Concrete order of attack inside Phase 1
+
+1. define the candidate-exchange shape in rendezvous
+2. wire STUN/NAT discovery into direct attempt setup
+3. make selector fallback reasons explicit
+4. prove the direct/fallback behavior with deterministic tests
+5. only then widen product claims beyond relay-first
 
 ### If the goal is cleanup instead of features
 
@@ -464,12 +552,13 @@ Run every affected command above, then verify the docs still match the code path
 
 ## Risks And Open Questions
 
-### Risk: punchthrough exists but is not integrated
+### Risk: direct-path groundwork exists, but the runtime proof does not
 
 Mitigation:
 
 - avoid marketing bore as direct-first today
 - describe direct transport as the next implementation target, not a current capability
+- make fallback reasons observable before changing any README/product copy
 
 ### Risk: no resumable state yet
 
@@ -483,18 +572,22 @@ Mitigation:
 Mitigation:
 
 - treat the current relay as functional, not production-hardened
-- keep using the existing health and status endpoints for visibility, then add rate limiting, quotas, and metrics before making stronger deployment claims
+- keep using the existing health and status endpoints for visibility, then add rate limiting, quotas, timeouts, and metrics before making stronger deployment claims
 
-### Open question: how broad the operator surface should become
+### Open question: how much operator surface bore actually wants
 
 Useful next steps are clear:
 
 - decide whether relay observations need persistence at all before adding a store
 - add simple operator views beyond the single status summary only if they solve a real relay problem
-- add alerting and configuration basics without turning Bore into a control plane
+- add alerting and configuration basics without turning bore into a control plane
 - if metrics or history need local durability later, start with a small relational SQLite store
 
-Avoid overbuilding beyond what the relay actually needs.
+### Open question: when directory transfer becomes worth it
+
+Current answer:
+
+- not before single-file resume and restart semantics are trustworthy
 
 ---
 
@@ -514,3 +607,4 @@ If you are resuming this repo later, do this in order:
    - browser and operator surface work
    - bore-admin implementation
 7. run focused verification before and after the change
+8. before calling a lane done, make sure the docs still read like an active program rather than a frozen snapshot
