@@ -21,7 +21,7 @@ bore currently ships a **relay-based encrypted file transfer path** plus a real 
 
 - **`client/`** — user-facing CLI for rendezvous, handshake, and encrypted file transfer
 - **`services/relay/`** — WebSocket relay that pairs peers, forwards encrypted frames, exposes operator health/status endpoints, and serves the embedded web UI
-- **`web/`** — Bun + TypeScript + Astro + Alpine browser surface for the product page and relay ops page
+- **`web/`** — Bun + React + Vite + TypeScript SPA for the product page and relay ops page (TanStack Router, TanStack Query, shadcn/ui, Tailwind, Biome)
 - **`lib/punchthrough/`** — NAT probing and hole-punching groundwork for a future direct path
 - **`services/bore-admin/`** — minimal operator CLI for relay status polling
 
@@ -38,8 +38,8 @@ bore currently ships a **relay-based encrypted file transfer path** plus a real 
   - `/healthz` and `/status` operator endpoints
   - embedded static web serving for `/` and `/ops/relay/`
 - browser surface in `web/` with:
-  - Astro product homepage for Bore's current runtime story
-  - Alpine-powered relay ops page that reads `/status`
+  - React + Vite SPA with product homepage for Bore's current runtime story
+  - TanStack Query-powered relay ops page that polls `/status`
   - static build output embedded into the relay
 - NAT probing / hole-punching groundwork in `lib/punchthrough/`
 - `bore-admin` CLI in `services/bore-admin/` for relay status polling
@@ -81,7 +81,7 @@ Doctrine for future work:
 ```text
 bore/
 ├── client/                  # active Go client
-├── web/                     # Astro + Alpine browser surface
+├── web/                     # React + Vite SPA browser surface
 ├── services/
 │   ├── relay/               # active Go relay service + embedded web UI
 │   └── bore-admin/          # minimal operator CLI
@@ -154,9 +154,11 @@ What is still missing:
 What exists:
 
 - Bun-managed frontend workspace
-- TypeScript + Astro static site with product-facing Bore homepage
-- Alpine-powered relay ops page that polls `/status`
-- styles, layout, and formatting helpers kept inside `web/`
+- React + Vite + TypeScript SPA with product-facing Bore homepage
+- TanStack Query-powered relay ops page that polls `/status` with auto-refresh
+- TanStack Router for type-safe client-side routing
+- shadcn/ui + Tailwind CSS dark theme with Biome for lint and formatting
+- format and relay-status API utilities kept inside `web/src/lib/`
 - production build output embedded by the relay under `services/relay/internal/webui/dist/`
 
 What is still missing:
@@ -223,8 +225,9 @@ bun run build
 
 Notes:
 
-- `bun run build` writes the static output into `services/relay/internal/webui/dist/`
+- `bun run build` writes the SPA output into `services/relay/internal/webui/dist/`
 - rebuild the web surface before shipping relay changes that depend on updated embedded assets
+- `bun run dev` proxies `/status` to `http://127.0.0.1:8080` for local development against a running relay
 
 ### Client
 
@@ -276,7 +279,7 @@ RELAY_ADDR=127.0.0.1:8080 go run ./cmd/relay
 Browser check while Terminal 1 is running:
 
 - product page: `http://127.0.0.1:8080/`
-- relay ops page: `http://127.0.0.1:8080/ops/relay/`
+- relay ops page: `http://127.0.0.1:8080/ops/relay`
 - raw status JSON: `http://127.0.0.1:8080/status`
 
 Terminal 2:
@@ -299,8 +302,8 @@ Expected result:
 - receiver completes successfully
 - sender and receiver SHA-256 values match
 - output file matches input bytes
-- `/` and `/ops/relay/` render from the relay with no broken static assets
-- `/ops/relay/` successfully reads aggregate data from `/status`
+- `/` and `/ops/relay` render from the relay with no broken static assets
+- `/ops/relay` successfully reads aggregate data from `/status`
 
 ---
 
@@ -382,8 +385,8 @@ Checklist:
 
 Checklist:
 
-- [x] add an in-repo Bun + TypeScript + Astro + Alpine frontend under `web/`
-- [x] serve the built web surface from the relay at `/` and `/ops/relay/`
+- [x] add an in-repo Bun + React + Vite + TypeScript SPA under `web/`
+- [x] serve the built web surface from the relay at `/` and `/ops/relay`
 - [x] keep the browser surface same-origin and read-only against the existing `/status` endpoint
 - [x] keep the product story aligned with the actual relay-based runtime
 - [ ] decide whether the browser surface should stay static + read-only or grow authenticated workflows later; if it ever owns durable writes, start with SQLite + handwritten SQL migrations and queries
@@ -408,7 +411,7 @@ This phase closes the gap between the current codebase and the standard service 
 
 **CI pipeline:**
 
-- [ ] add `.github/workflows/ci.yml` that runs `go test ./...` for the Go modules (`client/`, `services/relay/`, `services/bore-admin/`, `lib/punchthrough/`) and `bun run check && bun run test && bun run build` for `web/` on push and PR
+- [ ] add `.github/workflows/ci.yml` that runs `go test ./...` for the Go modules (`client/`, `services/relay/`, `services/bore-admin/`, `lib/punchthrough/`) and `cd web && bun install && bun run check && bun run test && bun run build` for the SPA on push and PR
 - [ ] add `golangci-lint run` to the CI workflow for each Go module
 - [ ] add `govulncheck ./...` to the CI workflow for each Go module
 - [ ] cache Bun dependencies for the `web/` job

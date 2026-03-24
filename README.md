@@ -4,10 +4,10 @@
 
 bore moves a file between two machines with a short human-readable rendezvous code. The current shipped transfer path is relay-based: the relay connects peers and forwards encrypted bytes, while the file data stays end-to-end encrypted between sender and receiver.
 
-The repo now also ships an in-repo browser surface built with **Bun + TypeScript + Astro + Alpine.js**. It lives alongside the existing CLI/runtime story instead of replacing it:
+The repo now also ships an in-repo browser surface built with **Bun + React + Vite + TypeScript**. It lives alongside the existing CLI/runtime story instead of replacing it:
 
 - `/` is the product-facing Bore homepage when served by the relay
-- `/ops/relay/` is a read-only operator page backed by the relay's existing `/status` endpoint
+- `/ops/relay` is a read-only operator page backed by the relay's existing `/status` endpoint
 
 ## Status
 
@@ -15,7 +15,7 @@ The repo now also ships an in-repo browser surface built with **Bun + TypeScript
 
 - the active client lives in `client/` and is implemented in **Go**
 - the relay lives in `services/relay/` and is implemented in **Go**
-- the browser surface lives in `web/` and is implemented with **Bun + TypeScript + Astro + Alpine.js**
+- the browser surface lives in `web/` and is implemented with **Bun + React + Vite + TypeScript**
 - NAT tooling lives in `lib/punchthrough/` and is implemented in **Go**
 - `services/bore-admin/` is a minimal operator CLI for relay health and status checks
 - the verified transfer path today is **relay-based**, not direct peer-to-peer
@@ -29,7 +29,7 @@ The repo now also ships an in-repo browser surface built with **Bun + TypeScript
 - SHA-256 file integrity verification
 - self-hostable WebSocket relay in `services/relay/`
 - relay `/healthz` and `/status` operator endpoints
-- embedded relay-served web UI at `/` and `/ops/relay/`
+- embedded relay-served web UI at `/` and `/ops/relay`
 - `bore-admin status` relay polling in `services/bore-admin/`
 - standalone NAT probing and hole-punching groundwork in `lib/punchthrough/`
 
@@ -48,7 +48,7 @@ The repo now also ships an in-repo browser surface built with **Bun + TypeScript
 | --- | --- | --- | --- |
 | `bore` client | `client/` | active | Rendezvous, handshake, encrypted transfer, CLI |
 | `relay` | `services/relay/` | active | WebSocket room broker, `/healthz`, `/status`, and static web UI serving |
-| `web` | `web/` | active | Astro/Alpine browser surface for product story and live relay ops page |
+| `web` | `web/` | active | React + Vite SPA for product story and live relay ops page |
 | `punchthrough` | `lib/punchthrough/` | active but not integrated | NAT probing and UDP hole-punching primitives |
 | `bore-admin` | `services/bore-admin/` | active | Minimal operator CLI for relay health and status polling |
 
@@ -99,7 +99,7 @@ RELAY_ADDR=127.0.0.1:8080 go run ./cmd/relay
 With the relay running:
 
 - product page: <http://127.0.0.1:8080/>
-- relay ops page: <http://127.0.0.1:8080/ops/relay/>
+- relay ops page: <http://127.0.0.1:8080/ops/relay>
 - raw status JSON: <http://127.0.0.1:8080/status>
 
 ### 5. Check relay status from the CLI (optional)
@@ -188,7 +188,7 @@ go build ./cmd/bore-admin
 │       ├── engine/
 │       ├── rendezvous/
 │       └── transport/
-├── web/                     # Astro + Alpine browser surface
+├── web/                     # React + Vite SPA browser surface
 ├── services/
 │   ├── relay/               # active Go relay service + embedded web UI dist
 │   └── bore-admin/          # minimal operator CLI

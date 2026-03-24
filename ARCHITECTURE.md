@@ -28,7 +28,7 @@ bore currently consists of five tracked components:
                        │                      │
                 ┌──────▼──────┐        ┌──────▼──────┐
                 │ punchthrough│        │ web surface │
-                │ groundwork  │        │ Astro/Alpine│
+                │ groundwork  │        │ React + Vite│
                 │ (future     │        │ same-origin │
                 │ direct path)│        │ via relay   │
                 └─────────────┘        └─────────────┘
@@ -36,7 +36,7 @@ bore currently consists of five tracked components:
 
 1. **Client (`client/`)** generates or parses a rendezvous code, performs the Noise handshake, and streams encrypted file data.
 2. **Relay (`services/relay/`)** pairs sender and receiver, forwards encrypted frames over WebSockets, and serves the embedded browser surface.
-3. **Web (`web/`)** provides the product-facing homepage and a read-only relay ops page, built with Bun + TypeScript + Astro + Alpine.
+3. **Web (`web/`)** provides the product-facing homepage and a read-only relay ops page, built with Bun + React + Vite + TypeScript (TanStack Router, TanStack Query, shadcn/ui, Tailwind).
 4. **Punchthrough (`lib/punchthrough/`)** contains STUN and UDP hole-punching primitives for a future direct path.
 5. **bore-admin (`services/bore-admin/`)** is a minimal operator CLI that queries relay status but does not participate in transfer runtime behavior.
 
@@ -58,11 +58,9 @@ client/
 
 web/
 ├── src/
-│   ├── layouts/              # Astro page shell
-│   ├── lib/                  # status types + formatting helpers
-│   ├── pages/                # product + relay ops routes
-│   ├── scripts/              # Alpine bootstrapping
-│   └── styles/               # tokens + base CSS
+│   ├── components/ui/        # shadcn/ui primitives
+│   ├── lib/                  # relay status client, format utils, cn()
+│   └── routes/               # TanStack Router route components
 └── tests/                    # focused frontend unit coverage
 
 services/relay/
@@ -255,45 +253,55 @@ The web surface is intentionally thin and same-origin with the relay.
 ### Layering
 
 ```text
-Astro pages + layouts
+React + TanStack Router (client-side routing)
   ↓
-static HTML/CSS output
+route components (home, ops/relay, 404)
   ↓
-small Alpine enhancement for relay status polling
+TanStack Query for relay status polling
   ↓
 same-origin GET to relay `/status`
+  ↓
+Vite builds SPA into static assets (dist/)
 ```
 
 ### Responsibilities
 
-#### `web/src/pages`
+#### `web/src/routes`
 
 Owns:
 
-- the Bore product-facing homepage
-- the relay operator page at `/ops/relay/`
+- the Bore product-facing homepage (`/`)
+- the relay operator page at `/ops/relay`
+- 404 catch-all route
+- root layout with shared navigation and footer
 - route-local content that stays aligned with the actual shipped runtime
 
-#### `web/src/scripts`
+#### `web/src/lib`
 
 Owns:
 
-- Alpine bootstrapping
-- periodic polling of `/status`
-- browser-side formatting for relay uptime, limits, and room counts
+- relay status API client with Zod validation
+- formatting helpers for uptime, bytes, and timestamps
+- shared utility functions
+
+#### `web/src/components/ui`
+
+Owns:
+
+- shadcn/ui component primitives (Button, Card)
+- project-owned, not a black-box library
 
 #### `services/relay/internal/webui`
 
 Owns:
 
-- embedded Astro build artifacts
-- static file resolution and 404 handling
+- embedded SPA build artifacts
+- static file resolution and SPA catch-all fallback
 - HTTP headers for the browser surface
 
 Design constraints:
 
 - keep the web surface read-only
-- prefer static output over a separate frontend runtime
 - do not add a second API just to support the status page
 - keep the browser story aligned with the existing relay-based product truth
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
   "files": {
-    "ignore": [".astro"]
+    "ignore": ["dist", "node_modules", "src/components/ui"]
   },
   "formatter": {
     "enabled": true,
