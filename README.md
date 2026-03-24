@@ -61,7 +61,7 @@ Bore's shipped path does **not** need a durable database today.
 - `services/bore-admin/` is a stateless CLI over that same `/status` endpoint.
 - resumable transfers, transfer history, and persisted operator history are **not implemented yet**.
 
-If Bore later earns local persistence for resume metadata, relay observations, or operator history, start with a small **relational SQLite** store. If the browser surface ever grows into authenticated write-heavy workflows, **Drizzle** is the default web-side fit; otherwise keep Go-side SQL explicit and boring. Do not pivot Bore's future data story toward MongoDB or a document-store control plane.
+If Bore later earns local persistence for resume metadata, relay observations, or operator history, start with a small **relational SQLite** store. If the browser surface ever grows into authenticated write-heavy workflows, keep it on SQLite with handwritten SQL migrations and queries; otherwise keep Go-side SQL explicit and boring. Do not pivot Bore's future data story toward MongoDB or a document-store control plane.
 
 ## Quick start
 

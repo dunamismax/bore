@@ -368,7 +368,7 @@ If Bore later needs local durable state, the default path is:
 
 1. keep the data **relational**
 2. start with **SQLite**
-3. use **Drizzle** only if the browser surface genuinely becomes a write-owning web app
+3. use handwritten SQL migrations and queries for any browser-owned persistence
 4. keep Go-side queries plain SQL first, with **`sqlc`** only if backend complexity earns it
 
 What Bore should avoid:

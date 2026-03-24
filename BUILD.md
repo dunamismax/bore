@@ -70,7 +70,7 @@ Current implementation truth:
 Doctrine for future work:
 
 - if Bore later needs local persistence, start with **SQLite** and a **relational** schema
-- if the browser surface later earns authenticated write-heavy workflows, use **Drizzle** on the web side
+- if the browser surface later earns authenticated write-heavy workflows, keep it on **SQLite** with handwritten SQL migrations and queries
 - if heavier Go-owned backend workflows later earn a richer query layer, use plain SQL first and add **`sqlc`** only when the query surface clearly justifies it
 - do **not** invent a MongoDB/document-store pivot for relay history, resume metadata, or operator state
 
@@ -366,7 +366,7 @@ Checklist:
 - [x] serve the built web surface from the relay at `/` and `/ops/relay/`
 - [x] keep the browser surface same-origin and read-only against the existing `/status` endpoint
 - [x] keep the product story aligned with the actual relay-based runtime
-- [ ] decide whether the browser surface should stay static + read-only or grow authenticated workflows later; if it ever owns durable writes, start with SQLite + Drizzle
+- [ ] decide whether the browser surface should stay static + read-only or grow authenticated workflows later; if it ever owns durable writes, start with SQLite + handwritten SQL migrations and queries
 - [ ] add browser-level smoke coverage only if the page surface becomes operationally critical
 
 ### Phase 5 — operator tooling depth
