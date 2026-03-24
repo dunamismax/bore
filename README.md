@@ -2,9 +2,11 @@
 
 [![CI](https://github.com/dunamismax/bore/actions/workflows/ci.yml/badge.svg)](https://github.com/dunamismax/bore/actions/workflows/ci.yml) [![Go](https://img.shields.io/badge/Go-1.26.1-00ADD8.svg)](go.mod) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Privacy-first file transfer with a real browser surface and a payload-blind relay.**
+**Peer-to-peer encrypted file transfer. No accounts, no cloud, no trust required.**
 
-bore moves a file between two machines with a short human-readable rendezvous code. The verified transfer path today is relay-based: the relay pairs peers and forwards encrypted bytes, while the file data stays end-to-end encrypted between sender and receiver.
+bore moves a file between two machines with a short human-readable rendezvous code. The default transfer path is **direct peer-to-peer**: bore discovers each peer's network address via STUN, exchanges candidates through a lightweight signaling server, and establishes a direct UDP connection via hole-punching. If the direct connection fails (e.g., both peers behind symmetric NATs), bore falls back to a relay automatically.
+
+All file data is end-to-end encrypted with Noise XXpsk0 regardless of transport path. The relay is payload-blind — it forwards encrypted bytes without any ability to inspect file contents.
 
 The repo also ships an in-repo browser surface built with Bun, React, Vite, and TypeScript:
 
@@ -19,31 +21,37 @@ Current truth:
 - binaries live under `cmd/`: `bore`, `relay`, `bore-admin`, and `punchthrough`
 - shared Go packages live under `internal/`: `client`, `relay`, and `punchthrough`
 - the browser surface lives in `web/`
-- the verified transfer path is relay-based with resumable single-file transfers
-- direct-path transport is implemented (STUN discovery, signaling, hole-punching, reliability framing) but pending real-world NAT validation; relay remains the default
+- **direct P2P is the default transfer path** — STUN discovery, signaling, hole-punching
+- relay is the automatic fallback when direct fails
+- end-to-end encryption protects all data regardless of transport method
+- resumable single-file transfers with on-disk checkpoint state
 - the relay is hardened with per-IP rate limiting, HTTP timeouts, operational metrics, and deployment packaging
 
 ## What Ships Today
 
-- `bore send` and `bore receive` for relay-based encrypted file transfer
-- resumable single-file transfers with on-disk checkpoint state
+- `bore send` and `bore receive` with **direct P2P transport by default**
+- automatic relay fallback when direct connection fails
+- `--relay-only` flag to force relay transport
+- transport method reporting (direct/relay + fallback reason)
 - rendezvous code generation and parsing
 - Noise `XXpsk0` handshake bound to the rendezvous code
 - ChaCha20-Poly1305 encrypted transfer channel
 - SHA-256 file integrity verification
+- resumable single-file transfers with on-disk checkpoint state
+- STUN/NAT discovery and relay-coordinated signaling for peer candidate exchange
+- UDP hole-punching with reliable framing layer
 - self-hostable WebSocket relay with `/healthz`, `/status`, and `/metrics`
 - per-IP rate limiting on relay `/ws` and `/signal` endpoints
 - explicit HTTP server timeouts (read, write, idle, header)
 - embedded relay-served web UI at `/` and `/ops/relay`
 - `bore-admin status` relay polling
 - deployment packaging (Dockerfile, systemd service unit)
-- STUN/NAT discovery, relay-coordinated signaling, and UDP hole-punching integrated into the client transport selector
-- `--direct` CLI flag on both `bore send` and `bore receive` for opt-in direct-path attempts
 - standalone `punchthrough` CLI for NAT probing
 
 ## Roadmap
 
-- end-to-end direct transfer verified across real NATs (implementation complete, pending real-world validation)
+- QUIC-based direct transport for higher throughput
+- ICE-like multi-candidate gathering for better NAT traversal success
 - directory transfer
 - broader operator tooling beyond status snapshots and metrics
 - broader security hardening and external review
@@ -52,10 +60,10 @@ Current truth:
 
 | Component | Location | Status | Purpose |
 | --- | --- | --- | --- |
-| `bore` client | `cmd/bore`, `internal/client/` | active | Rendezvous, handshake, encrypted transfer, CLI |
-| `relay` | `cmd/relay`, `internal/relay/` | active | WebSocket room broker, `/healthz`, `/status`, and static web UI serving |
+| `bore` client | `cmd/bore`, `internal/client/` | active | P2P direct transport, relay fallback, crypto, transfer engine, CLI |
+| `relay` | `cmd/relay`, `internal/relay/` | active | Signaling server for P2P connections, fallback transport, room broker |
 | `web` | `web/` | active | React + Vite SPA for product story and live relay ops page |
-| `punchthrough` | `cmd/punchthrough`, `internal/punchthrough/` | active, integrated into client transport selector | NAT probing, STUN discovery, and UDP hole-punching |
+| `punchthrough` | `cmd/punchthrough`, `internal/punchthrough/` | active, integrated | NAT probing, STUN discovery, UDP hole-punching (default transport path) |
 | `bore-admin` | `cmd/bore-admin` | active | Minimal operator CLI for relay health and status polling |
 
 ## Data layer stance
@@ -95,6 +103,10 @@ go build ./cmd/bore
 RELAY_ADDR=127.0.0.1:8080 go run ./cmd/relay
 ```
 
+The relay serves as:
+- **Signaling server** — coordinates P2P candidate exchange between peers
+- **Fallback transport** — forwards encrypted bytes when direct P2P fails
+
 With the relay running:
 
 - product page: <http://127.0.0.1:8080/>
@@ -113,6 +125,8 @@ go run ./cmd/bore-admin status --relay http://127.0.0.1:8080
 ./bore send ./report.pdf --relay http://127.0.0.1:8080
 ```
 
+bore attempts a direct P2P connection by default. If direct fails, it falls back to the relay automatically.
+
 Example output:
 
 ```text
@@ -122,12 +136,22 @@ Code: Ahcj7nQZclo-j15A_xGS8w-868-outer-crane-crane
 Relay: http://127.0.0.1:8080
 
 Waiting for receiver...
+
+Sent: report.pdf (58213 bytes, 1 chunks)
+SHA-256: a1b2c3...
+Transport: transport=direct
 ```
 
 ### 6. Receive the file on the other machine
 
 ```bash
 ./bore receive Ahcj7nQZclo-j15A_xGS8w-868-outer-crane-crane --relay http://127.0.0.1:8080
+```
+
+### 7. Force relay-only transport
+
+```bash
+./bore send ./report.pdf --relay http://127.0.0.1:8080 --relay-only
 ```
 
 ## Build and test
@@ -201,20 +225,42 @@ go build ./cmd/bore-admin
 └── SECURITY.md
 ```
 
+## Architecture
+
+```text
+                    ┌────────────────────┐
+                    │ Can peers connect  │
+                    │ directly?          │
+                    └────────┬───────────┘
+                             │
+                   ┌─────────┴─────────┐
+                   │                   │
+                 Yes (default)        No
+                   │                   │
+            ┌──────┴──────┐    ┌───────┴───────┐
+            │ direct path │    │ relay path    │
+            │ STUN + UDP  │    │ (automatic    │
+            │ hole-punch  │    │ fallback)     │
+            └─────────────┘    └───────────────┘
+
+Both paths use the same Noise XXpsk0 E2E encryption.
+The relay never sees plaintext.
+```
+
 ## Near-term roadmap
 
-- keep the relay-based path stable and honest
-- keep the web surface narrow, read-only, and same-origin with the relay
-- validate direct transport across real-world NAT configurations
+- evaluate QUIC for direct transport throughput improvements
+- measure NAT traversal success rate across real-world networks
+- update browser surface to reflect P2P-first architecture
 - add directory transfer after single-file resume semantics are proven
 - deepen operator tooling only where it solves real relay problems
 
 ## Notes
 
 - The rendezvous code is a cryptographic input to the handshake, not just a routing token.
-- The relay brokers connections and forwards encrypted bytes; it should stay payload-blind.
-- The root web surface is a product and operator layer over Bore's existing runtime, not a replacement for the CLI or transfer engine.
-- The codebase ships a reliable relay-based transfer path with resumable single-file transfers. Direct transport is implemented and integrated but pending real-world NAT validation; relay remains the default.
+- The relay serves as both signaling server (P2P candidate exchange) and fallback transport.
+- End-to-end encryption is identical regardless of transport path — the relay is always payload-blind.
+- Direct P2P is the default. Relay is the fallback. Use `--relay-only` to force relay transport.
 - If docs and code disagree, the docs are stale. Fix both in the same change.
 
 For the execution manual and current TODO lane, start with [`BUILD.md`](BUILD.md).

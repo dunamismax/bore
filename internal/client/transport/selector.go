@@ -11,8 +11,10 @@ import (
 )
 
 // DefaultSelectorTimeout is the timeout for the direct-transport attempt
-// before falling back to relay.
-const DefaultSelectorTimeout = 3 * time.Second
+// before falling back to relay. Set to 8 seconds to give hole-punching
+// a reasonable window across diverse NAT types while keeping user-perceived
+// latency acceptable when direct fails.
+const DefaultSelectorTimeout = 8 * time.Second
 
 // Selector implements [Dialer] by trying a direct connection first and
 // falling back to a relay connection if direct fails or is not configured.

@@ -129,9 +129,9 @@ func cmdSend(args []string) error {
 	fs := flag.NewFlagSet("send", flag.ContinueOnError)
 	relayFlag := fs.String("relay", "", "relay server URL (default: "+rendezvous.DefaultRelayURL+")")
 	wordsFlag := fs.Int("words", code.DefaultWords, "number of code words (2-5)")
-	directFlag := fs.Bool("direct", false, "attempt direct P2P transport via STUN/hole-punching")
+	relayOnlyFlag := fs.Bool("relay-only", false, "force relay transport, skip direct P2P attempt")
 
-	path, err := parsePrimaryArg(fs, args, "bore send <path> [--relay URL] [--words N] [--direct]")
+	path, err := parsePrimaryArg(fs, args, "bore send <path> [--relay URL] [--words N] [--relay-only]")
 	if err != nil {
 		return err
 	}
@@ -167,7 +167,7 @@ func cmdSend(args []string) error {
 
 	dialer := &transport.Selector{
 		RelayURL:     relayURL,
-		EnableDirect: *directFlag,
+		EnableDirect: !*relayOnlyFlag,
 		Role:         "sender",
 	}
 
@@ -195,6 +195,7 @@ func cmdSend(args []string) error {
 	fmt.Fprintf(os.Stderr, "Sent: %s (%d bytes, %d chunks)\n",
 		result.Transfer.Filename, result.Transfer.Size, result.Transfer.ChunksSent)
 	fmt.Fprintf(os.Stderr, "SHA-256: %x\n", result.Transfer.SHA256)
+	fmt.Fprintf(os.Stderr, "Transport: %s\n", dialer.LastSelection.String())
 	return nil
 }
 
@@ -202,9 +203,9 @@ func cmdReceive(args []string) error {
 	fs := flag.NewFlagSet("receive", flag.ContinueOnError)
 	relayFlag := fs.String("relay", "", "relay server URL (default: "+rendezvous.DefaultRelayURL+")")
 	outputFlag := fs.String("output", ".", "output directory")
-	directFlag := fs.Bool("direct", false, "attempt direct P2P transport via STUN/hole-punching")
+	relayOnlyFlag := fs.Bool("relay-only", false, "force relay transport, skip direct P2P attempt")
 
-	codeStr, err := parsePrimaryArg(fs, args, "bore receive <code> [--relay URL] [--output DIR] [--direct]")
+	codeStr, err := parsePrimaryArg(fs, args, "bore receive <code> [--relay URL] [--output DIR] [--relay-only]")
 	if err != nil {
 		return err
 	}
@@ -220,7 +221,7 @@ func cmdReceive(args []string) error {
 
 	dialer := &transport.Selector{
 		RelayURL:     relayURL,
-		EnableDirect: *directFlag,
+		EnableDirect: !*relayOnlyFlag,
 		Role:         "receiver",
 	}
 
@@ -234,6 +235,7 @@ func cmdReceive(args []string) error {
 		result.Transfer.Filename, result.Transfer.Size, result.Transfer.ChunksReceived)
 	fmt.Fprintf(os.Stderr, "SHA-256: %x\n", result.Transfer.SHA256)
 	fmt.Fprintf(os.Stderr, "Saved to: %s\n", outPath)
+	fmt.Fprintf(os.Stderr, "Transport: %s\n", dialer.LastSelection.String())
 	return nil
 }
 
@@ -246,8 +248,10 @@ func printStatus() {
 	fmt.Println("====")
 	fmt.Println()
 	fmt.Println("  version: " + version)
-	fmt.Println("  status:  relay-based encrypted file transfer")
+	fmt.Println("  status:  peer-to-peer encrypted file transfer (relay fallback)")
 	fmt.Println("  mission: privacy-first file transfer. no accounts, no cloud, no trust required.")
+	fmt.Println()
+	fmt.Println("  transport: direct P2P by default, relay as automatic fallback")
 	fmt.Println()
 	fmt.Println("  implemented:")
 	for _, item := range implementedItems {
@@ -277,11 +281,11 @@ func printComponents() {
 }
 
 func printHelp() {
-	fmt.Println("bore -- privacy-first file transfer")
+	fmt.Println("bore -- peer-to-peer encrypted file transfer")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  bore send <path> [--relay URL] [--words N] [--direct]")
-	fmt.Println("  bore receive <code> [--relay URL] [--output DIR] [--direct]")
+	fmt.Println("  bore send <path> [--relay URL] [--words N] [--relay-only]")
+	fmt.Println("  bore receive <code> [--relay URL] [--output DIR] [--relay-only]")
 	fmt.Println("  bore status")
 	fmt.Println("  bore components")
 	fmt.Println()
@@ -291,12 +295,18 @@ func printHelp() {
 	fmt.Println("Send flags:")
 	fmt.Println("  --relay URL      relay server URL (default: http://localhost:8080)")
 	fmt.Println("  --words N        number of code words, 2-5 (default: 3)")
-	fmt.Println("  --direct         attempt direct P2P transport via STUN/hole-punching")
+	fmt.Println("  --relay-only     force relay transport, skip direct P2P attempt")
 	fmt.Println()
 	fmt.Println("Receive flags:")
 	fmt.Println("  --relay URL      relay server URL (default: http://localhost:8080)")
 	fmt.Println("  --output DIR     output directory (default: current directory)")
-	fmt.Println("  --direct         attempt direct P2P transport via STUN/hole-punching")
+	fmt.Println("  --relay-only     force relay transport, skip direct P2P attempt")
+	fmt.Println()
+	fmt.Println("Transport:")
+	fmt.Println("  bore attempts a direct P2P connection by default using STUN")
+	fmt.Println("  discovery and UDP hole-punching. If the direct connection fails,")
+	fmt.Println("  it falls back to the relay automatically. Use --relay-only to")
+	fmt.Println("  skip the direct attempt.")
 	fmt.Println()
 	fmt.Println("Environment:")
 	fmt.Println("  BORE_LOG=debug   enable debug logging")
@@ -307,6 +317,8 @@ func printHelp() {
 // ---------------------------------------------------------------------------
 
 var implementedItems = []string{
+	"direct P2P transport by default (STUN discovery, hole-punching)",
+	"automatic relay fallback when direct connection fails",
 	"Noise_XXpsk0_25519_ChaChaPoly_SHA256 end-to-end encryption",
 	"HKDF-SHA256 PSK derivation from rendezvous code",
 	"ChaCha20-Poly1305 AEAD data channel with counter nonces",
@@ -314,22 +326,22 @@ var implementedItems = []string{
 	"file transfer with chunking (256 KiB chunks)",
 	"resumable single-file transfers with on-disk checkpoint state",
 	"human-readable rendezvous codes (2-5 words, 26-50 bits entropy)",
-	"WebSocket relay transport (zero-knowledge relay)",
+	"relay-coordinated signaling for peer candidate exchange",
+	"observable transport decisions (method + fallback reason)",
 	"bore send / bore receive CLI commands",
 }
 
 var notYetBuilt = []string{
-	"direct P2P transport (UDP hole-punching)",
+	"QUIC-based direct transport (replacing custom reliability layer)",
 	"directory transfer",
 	"transfer history",
-	"rate limiting and DoS protection on relay",
 	"security audit",
 }
 
 var nextFocus = []string{
-	"direct P2P path via punchthrough library",
-	"relay rate limiting",
-	"relay hardening (quotas, timeouts, metrics)",
+	"improve direct transport throughput (evaluate QUIC)",
+	"measure NAT traversal success rate across real networks",
+	"update browser surface for P2P-first architecture",
 }
 
 type component struct {
@@ -342,17 +354,17 @@ var components = []component{
 	{
 		"bore-client (Go)",
 		"active",
-		"Go client library and CLI: crypto, transfer engine, rendezvous, WebSocket transport",
+		"Go client library and CLI: P2P direct transport, relay fallback, crypto, transfer engine",
 	},
 	{
 		"relay",
 		"active",
-		"Go relay server: zero-knowledge WebSocket stream broker, room registry",
+		"Go relay server: signaling for P2P connections, fallback transport, room registry",
 	},
 	{
 		"punchthrough",
-		"active",
-		"Go NAT traversal library: STUN probing, UDP hole-punching",
+		"active, integrated",
+		"Go NAT traversal: STUN discovery, UDP hole-punching, integrated into default transport path",
 	},
 	{
 		"bore-admin",

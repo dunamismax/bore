@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document describes bore's current cryptographic design for the relay-based transfer path.
+This document describes bore's current cryptographic design. The crypto layer is transport-agnostic — it works identically over the direct P2P path (default) and the relay fallback path.
 
 It is not a claim of formal verification or external audit. It is the implementation-level design reference for what the client is doing today.
 
@@ -113,8 +113,9 @@ Current properties:
 
 The channel is transport-agnostic at the IO boundary:
 
-- today it runs over the relay transport
-- later it can run over a direct path if the client integrates `internal/punchthrough/`
+- on the default direct path, it runs over the `ReliableConn` UDP framing layer
+- on the relay fallback path, it runs over the WebSocket relay transport
+- both paths deliver an `io.ReadWriteCloser` to the crypto layer
 
 ---
 
@@ -173,9 +174,7 @@ Design rule:
 
 ## What is not implemented yet
 
-- direct-transport integration through `internal/punchthrough/`
-- resumable transfer protocol state
-- relay-side rate limiting and broader anti-abuse controls
+- QUIC-based direct transport (currently using custom UDP reliability layer)
 - external crypto review or audit
 
 These gaps matter because they limit what claims the repo can make today.
@@ -184,9 +183,8 @@ These gaps matter because they limit what claims the repo can make today.
 
 ## Open follow-up questions
 
-1. how should direct-transport negotiation be expressed without weakening the current relay-based path?
-2. what resume-state format should be used once resumable transfer is implemented?
-3. what hardening checks should become mandatory in CI for the crypto-relevant packages?
-4. when does the relay need explicit key and metadata lifecycle documentation beyond the current payload-blind design?
+1. should QUIC's TLS 1.3 handshake augment or replace the Noise handshake for the direct transport path?
+2. what hardening checks should become mandatory in CI for the crypto-relevant packages?
+3. when does the relay need explicit key and metadata lifecycle documentation beyond the current payload-blind design?
 
 For the broader threat model, see [`threat-model.md`](threat-model.md). For current security posture, see [`../SECURITY.md`](../SECURITY.md).

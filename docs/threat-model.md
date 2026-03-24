@@ -4,7 +4,7 @@
 
 This document defines the threat model for bore: who the actors are, what the system protects, what attacks matter, and what the current design still leaves exposed. It is a practical reference for design decisions, not an academic exercise.
 
-bore is currently a two-party file transfer tool with a relay-based encrypted path. The threat model applies to the flow where a sender creates a rendezvous code, a receiver enters it, and the file moves through the relay under end-to-end encryption.
+bore is a two-party file transfer tool with a P2P-first, relay-fallback architecture. The default transport is direct peer-to-peer via STUN discovery and UDP hole-punching. When direct fails, bore falls back to a relay automatically. End-to-end encryption protects all file data regardless of transport path. The threat model applies to both paths.
 
 ---
 
@@ -38,12 +38,13 @@ The party accepting the transfer. They know the rendezvous code, use it to authe
 
 **Trust level: untrusted for content, semi-trusted for availability**
 
-The relay forwards encrypted bytes between sender and receiver. It is not trusted with file content or transfer metadata carried inside the encrypted channel.
+The relay serves two roles: signaling server for P2P candidate exchange, and fallback transport when direct fails. It is not trusted with file content or transfer metadata carried inside the encrypted channel.
 
 **Capabilities:**
 - sees connection metadata such as IP addresses, timing, and encrypted byte counts
-- can throttle, delay, or drop traffic
-- can refuse to relay
+- during signaling, sees both peers' STUN-discovered public addresses and NAT types
+- when used as fallback transport, can throttle, delay, or drop traffic
+- can refuse to relay or refuse to coordinate signaling
 - cannot decrypt the protected application data
 
 ### Network observer
@@ -120,7 +121,6 @@ bore does **not** currently aim to provide:
 - long-term identity or accounts
 - malware scanning or file-content validation
 - protection against compromised endpoints
-- interruption-safe resumable transfers
 
 ---
 
@@ -136,7 +136,7 @@ bore does **not** currently aim to provide:
 - each room is intended for a single sender/receiver pairing
 - users can increase the number of code words for more entropy
 
-**Residual risk:** The relay does not yet implement explicit rate limiting, so online guessing resistance depends on code entropy, room lifetime, and operational context.
+**Residual risk:** The relay enforces per-IP rate limiting, which provides some online guessing resistance. However, a distributed attacker could still attempt guesses across many IPs.
 
 ### 2. Man-in-the-middle or handshake tampering
 
@@ -190,10 +190,25 @@ bore does **not** currently aim to provide:
 - room count is bounded by registry configuration
 - waiting rooms expire
 - WebSocket message size is capped
+- per-IP rate limiting on `/ws` and `/signal` endpoints
+- explicit HTTP server timeouts (read, write, idle, header)
+- operational metrics tracking for abuse detection
 
-**Residual risk:** Those are baseline controls, not full abuse protection. Rate limiting, quotas, health visibility, and metrics still need to be added.
+**Residual risk:** These are deliberate hardening controls but do not constitute full DDoS protection. External load balancing and CDN-level protection may be needed for public deployments.
 
-### 7. Malicious files or compromised endpoints
+### 7. Direct P2P connection attacks
+
+**Attack:** An attacker on the direct path between peers attempts to intercept, modify, or disrupt the UDP connection.
+
+**Current mitigations:**
+- the Noise handshake establishes session keys before any file data is sent
+- authenticated encryption (ChaCha20-Poly1305) protects every frame
+- modified packets fail AEAD verification and are rejected
+- packet injection does not affect the authenticated session
+
+**Residual risk:** An active attacker can disrupt the direct UDP connection (e.g., by flooding the punched-through port), forcing bore to fall back to relay. This is a denial of direct service, not a confidentiality break. The transfer still succeeds via relay with the same encryption.
+
+### 8. Malicious files or compromised endpoints
 
 **Attack:** The transport succeeds, but one endpoint is already hostile or the file itself is harmful.
 
@@ -254,9 +269,11 @@ bore does **not** currently aim to provide:
 |------|:-----------:|:------------:|:----------:|:------------:|
 | File content | Yes | Yes | No | No |
 | File metadata inside the encrypted channel | Yes | Yes | No | No |
-| Peer IP address | Relay address | Relay address | Both relay clients | Client-to-relay endpoints |
-| Transfer size (bytes) | Yes | Yes | Encrypted total | Encrypted total |
+| Peer IP address (direct) | Peer's public IP | Peer's public IP | Both (during signaling) | Peer-to-peer endpoints |
+| Peer IP address (relay fallback) | Relay address | Relay address | Both relay clients | Client-to-relay endpoints |
+| Transfer size (bytes) | Yes | Yes | Encrypted total (relay only) | Encrypted total |
 | Transfer timing | Yes | Yes | Yes | Yes |
+| Transport method used | Yes | Yes | Indirectly (relay usage = fallback) | Connection patterns |
 | Rendezvous code | Yes | Yes | No | No |
 | Room ID | Yes | Yes | Yes | Possibly, if it can inspect relay requests |
 

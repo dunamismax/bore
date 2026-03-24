@@ -17,46 +17,49 @@ If this file and the code disagree, fix both in the same change.
 
 ## Mission
 
-Build a privacy-first file transfer tool that makes encrypted delivery feel simple for end users while keeping the operational surface honest for relay operators.
+Build a privacy-first peer-to-peer file transfer tool where files move directly between peers with real end-to-end encryption. No accounts, no cloud, no trust required.
 
-The product line stays narrow on purpose:
+The architecture is **P2P-first, relay-fallback**:
 
-- the sender and receiver should get one trustworthy path before the repo claims many
-- relay transport is the shipped truth until direct transport is proven, measured, and worth promoting
-- the browser surface exists to explain runtime state, not to become a separate control plane
-- future durability work should make transfers more dependable without turning bore into a generic sync platform
+- the default transfer path is a direct connection between sender and receiver
+- the relay exists as a signaling server and fallback transport when direct connections fail
+- end-to-end encryption (Noise XXpsk0) protects all file data regardless of transport path
+- the relay never sees plaintext — it is payload-blind whether used for signaling or fallback data relay
 
 ---
 
 ## Current execution posture
 
-bore is **active**, not archival.
+bore is **active**, mid-rearchitecture.
 
-Phase 0 shipped a real, usable relay-based path. That is progress, not finish line energy. The repo still has obvious product and systems work in front of it:
+The repo shipped a working relay-based path in v0.1.0 (Phase 0). The direct transport infrastructure was built and integrated behind a `--direct` opt-in flag. The current work is **promoting direct transport to the default path** — P2P first, relay as fallback.
 
-- direct transport is scaffolded but not yet real in the shipped client path
-- transfers are still single-file and non-resumable
-- relay operations are functional but not yet hardened
-- the browser and operator surfaces are intentionally narrow and should stay honest while the runtime grows
+### Architecture evolution
 
-Treat this document like a live program, not a retrospective. Do not let the existence of a working relay path make the repo read “done forever.”
+```
+v0.1.0:  relay-only (default) → direct (opt-in, --direct flag)
+v0.2.0:  direct (default)     → relay (fallback, --relay-only flag)
+```
 
 ### Recommended build order unless a bug/security issue interrupts
 
-1. ~~make direct-path transport real and measurable~~ (Phase 1 done, pending real-world validation)
-2. ~~make single-file transfer durable enough to resume cleanly~~ (Phase 2 done)
-3. ~~harden relay operations and verification discipline~~ (Phase 3 done)
-4. deepen operator tooling only where runtime reality justifies it
+1. ~~make relay-based transfer work~~ (Phase 0 done)
+2. ~~build direct transport infrastructure~~ (Phase 1 legacy done)
+3. ~~make single-file transfer resumable~~ (Phase 2 done)
+4. ~~harden relay operations~~ (Phase 3 done)
+5. **make direct transport the default path** (Phase 5 — active)
+6. improve direct transport quality (Phase 6 — planned)
+7. deepen operator and browser surfaces (Phase 7 — planned)
 
 ---
 
 ## Repo snapshot
 
-bore currently ships a relay-based encrypted file transfer path plus a real in-repo browser surface built from one root Go module and one frontend workspace:
+bore ships a P2P-first encrypted file transfer path with relay fallback, plus a browser surface, built from one root Go module and one frontend workspace:
 
 - `cmd/bore` plus `internal/client/` for the user-facing CLI, rendezvous flow, crypto, and transfer engine
-- `cmd/relay` plus `internal/relay/` for the WebSocket relay, room registry, operator endpoints, and embedded web UI
-- `cmd/punchthrough` plus `internal/punchthrough/` for NAT probing and hole-punching groundwork
+- `cmd/relay` plus `internal/relay/` for the WebSocket relay, signaling server, room registry, operator endpoints, and embedded web UI
+- `cmd/punchthrough` plus `internal/punchthrough/` for NAT probing and hole-punching
 - `cmd/bore-admin` for minimal operator CLI status polling
 - `internal/relay/ratelimit/` for per-IP token bucket rate limiting
 - `internal/relay/metrics/` for atomic operator-facing counters
@@ -64,30 +67,37 @@ bore currently ships a relay-based encrypted file transfer path plus a real in-r
 
 ### What is working today
 
-- relay-based encrypted file transfer
+- **P2P direct transfer** as the default path (STUN discovery → signaling → hole-punch → transfer)
+- relay-based transfer as automatic fallback when direct fails
+- `--relay-only` flag to force relay path
 - rendezvous code generation and parsing
-- Noise `XXpsk0` handshake
+- Noise `XXpsk0` handshake (works identically over direct or relay transport)
 - encrypted transfer framing with SHA-256 verification
 - resumable single-file transfers with on-disk checkpoint state
+- relay-coordinated signaling (`/signal` endpoint) for candidate exchange
+- STUN/NAT discovery and UDP hole-punching
+- UDP reliable framing layer (`ReliableConn`) for direct transport
 - per-IP rate limiting on relay `/ws` and `/signal` endpoints
 - explicit HTTP server timeouts (read, write, idle, header)
 - relay `/healthz`, `/status`, and `/metrics` endpoints
 - relay-served browser surface at `/` and `/ops/relay`
 - `bore-admin status` against the relay status endpoint
-- standalone punchthrough probing primitives and CLI
+- standalone punchthrough probing CLI
 - deployment packaging (Dockerfile, systemd service unit)
 
 ### What is still not done
 
-- direct transport integrated end-to-end into the client path
+- QUIC-based direct transport (replacing custom ReliableConn)
+- ICE-like multi-candidate gathering
+- TURN-style relay data channel (relay as encrypted tunnel, not just signaling)
 - directory transfer
 - authenticated or write-capable browser workflows
 - broader operator tooling beyond status snapshots and metrics
 - external security review
 
-### Hard truth to preserve in all docs
+### Architecture truth
 
-The only verified transfer path today is **relay-based**. Direct transport exists as groundwork and integration scaffolding, not as current shipped runtime behavior.
+The default transfer path is **direct P2P**. The client attempts STUN discovery, exchanges candidates through the relay's signaling channel, evaluates NAT feasibility, and attempts hole-punching. If direct fails at any step, the client falls back to the relay transport automatically. End-to-end encryption (Noise XXpsk0) protects all file data regardless of which transport path is used — the relay is always payload-blind.
 
 ---
 
@@ -99,7 +109,7 @@ Current implementation truth:
 - `internal/relay/room` keeps bounded room state in memory only
 - `web/` reads live aggregate state from `/status`; it does not own writes or auth
 - `bore-admin` fetches `/status` on demand and does not persist snapshots
-- resumable transfer metadata and transfer history are future work
+- resumable transfer metadata is receiver-side filesystem state
 
 Doctrine for future work:
 
@@ -123,7 +133,14 @@ bore/
 │   └── bore-relay.service
 ├── internal/
 │   ├── client/
+│   │   ├── code/
+│   │   ├── crypto/
+│   │   ├── engine/
+│   │   ├── rendezvous/
+│   │   └── transport/
 │   ├── punchthrough/
+│   │   ├── punch/
+│   │   └── stun/
 │   └── relay/
 │       ├── metrics/
 │       ├── ratelimit/
@@ -145,50 +162,48 @@ bore/
 
 ### `cmd/bore` + `internal/client/`
 
-Status: working relay-based transfer path with direct-path integration and resume support
+Status: P2P-first transfer with relay fallback and resume support
 
 What exists:
 
 - rendezvous code model and parsing
-- Noise `XXpsk0` handshake
+- Noise `XXpsk0` handshake (transport-agnostic, works over direct or relay)
 - secure channel framing over arbitrary `io.ReadWriter`
 - transfer engine with header, ResumeOffer, chunk, and end framing
 - SHA-256 integrity verification
 - resumable single-file transfers with on-disk checkpoint state
 - ResumeOffer protocol: receiver tells sender which chunk to start from
 - deterministic transfer ID from (filename, size, SHA-256, chunk_size)
-- restart-vs-resume rules: metadata match + correct partial file size → resume; otherwise restart from 0
-- `ReceiveFile` for disk-based resume, `ReceiveToFile` in rendezvous for full flow
-- relay transport plus selector wiring
-- `SelectionResult` with `Method`, `FallbackReason`, and `DirectErr` for observable transport decisions
+- transport selector: direct-first with relay fallback (default behavior)
+- `--relay-only` flag to force relay transport
 - `Candidate` and `CandidatePair` types for relay-coordinated peer address exchange
 - relay-coordinated signaling (`/signal` endpoint) for candidate exchange between peers
 - STUN/NAT discovery wired into the selector via `DiscoverCandidate`
 - UDP reliability/framing layer (`ReliableConn`) with sequence numbers, ACK, retransmit, and FIN
 - `DirectDialer` with hole-punch integration via `internal/punchthrough/punch`
-- `Selector.EnableDirect` flag for full discovery → signaling → punch → fallback path
-- `--direct` CLI flag on both `bore send` and `bore receive`
+- `SelectionResult` with `Method`, `FallbackReason`, and `DirectErr` for observable transport decisions
 - expanded `FallbackReason` set: `STUNFailed`, `NATUnfavorable`, `PunchFailed`, `SignalingFailed`
-- deterministic tests verifying selector fallback reasons through unit and integration paths
-- relay signaling endpoint tests for candidate exchange, no-candidate, and cleanup
+- deterministic tests verifying selector fallback reasons
+- relay signaling endpoint tests for candidate exchange
 - reliable framing unit tests for encode/decode, flags, and edge cases
-- Go test coverage for code, crypto, engine, transport, rendezvous, and relay signaling
 
 What is still missing:
 
-- end-to-end direct transfer verified across real NATs (current implementation is correct but needs real-world validation)
+- QUIC transport for higher-throughput direct transfers
+- ICE-like multi-candidate gathering
 - directory transfer
 - richer progress and transfer history handling
 
 ### `cmd/relay` + `internal/relay/`
 
-Status: hardened room broker with rate limiting, metrics, and deployment packaging
+Status: signaling server and fallback transport with hardened operations
 
 What exists:
 
 - room registry and state machine
 - WebSocket sender and receiver flow
-- bidirectional encrypted frame relay with byte/frame counting
+- bidirectional encrypted frame relay with byte/frame counting (fallback transport)
+- `/signal` WebSocket endpoint for relay-coordinated candidate exchange (primary signaling)
 - room TTL reaper with expiry callback
 - per-IP rate limiting on `/ws` and `/signal` endpoints
 - explicit HTTP server timeouts (read, write, idle, header)
@@ -201,6 +216,7 @@ What exists:
 
 What is still missing:
 
+- TURN-style authenticated relay data channel
 - longer-term operator observation and alerting tooling
 - authenticated operator endpoints
 
@@ -219,14 +235,14 @@ What exists:
 
 What is still missing:
 
+- transport method stats in the operator page
 - authenticated operator workflows
 - historical or persisted relay state
 - control-plane mutations
-- broader browser coverage beyond focused unit checks
 
 ### `cmd/punchthrough` + `internal/punchthrough/`
 
-Status: integrated into client transport selector, standalone CLI still available
+Status: integrated into client transport selector as primary connection method
 
 What exists:
 
@@ -239,8 +255,9 @@ What exists:
 
 What is still missing:
 
+- ICE-like multi-candidate gathering (multiple STUN servers, local candidates)
+- relay candidate (TURN-style)
 - broader real-world network validation across diverse NAT types
-- evidence that direct mode succeeds often enough to change product claims
 
 ### `cmd/bore-admin`
 
@@ -254,10 +271,10 @@ What exists:
 
 What is still missing:
 
+- transport method breakdown in status output
 - persistent storage or local history
 - alerting
 - configuration profiles
-- deeper coordination with the browser operator surface
 
 ---
 
@@ -325,9 +342,9 @@ go build ./cmd/bore-admin
 go run ./cmd/bore-admin status --relay http://127.0.0.1:8080
 ```
 
-### Local relay-based smoke flow
+### Local smoke flow
 
-Terminal 1:
+Terminal 1 — start relay (used for signaling + fallback):
 
 ```bash
 RELAY_ADDR=127.0.0.1:8080 go run ./cmd/relay
@@ -341,56 +358,72 @@ Browser check while Terminal 1 is running:
 - operational metrics: `http://127.0.0.1:8080/metrics`
 - health check: `http://127.0.0.1:8080/healthz`
 
-Terminal 2:
+Terminal 2 — send (tries direct first, falls back to relay):
 
 ```bash
 ./bore send ./payload.txt --relay http://127.0.0.1:8080
 ```
 
-Terminal 3:
+Terminal 3 — receive:
 
 ```bash
 ./bore receive <code> --relay http://127.0.0.1:8080
 ```
 
+Terminal 2 — send with relay-only (forces relay, skips direct):
+
+```bash
+./bore send ./payload.txt --relay http://127.0.0.1:8080 --relay-only
+```
+
 Expected result:
 
-- sender prints a full rendezvous code
-- receiver completes successfully
+- sender prints a full rendezvous code and the transport method used
+- receiver completes successfully and reports transport method
 - sender and receiver SHA-256 values match
 - output file matches input bytes
-- `/` and `/ops/relay` render from the relay with no broken static assets
-- `/ops/relay` successfully reads aggregate data from `/status`
+- when direct succeeds: "transport: direct" in verbose output
+- when direct fails: "transport: relay (fallback: ...)" in verbose output
 
 ---
 
 ## Milestone map
 
-These are the real milestones still in front of the repo.
+### M0 — relay-based encrypted transfer ✓
 
-### M1 — direct path is real, not just scaffolded
+Done. The relay path works, is tested, and is the proven fallback.
 
-Success means the client can attempt a direct path, explain when it fails, and fall back to relay without hand-waving.
+### M1 — direct transport infrastructure ✓
 
-### M2 — transfer durability is real
+Done. STUN, signaling, hole-punching, ReliableConn all implemented and tested.
 
-Success means a single interrupted transfer can resume or cleanly restart with explicit rules and tests.
+### M2 — transfer durability ✓
 
-### M3 — relay ops are credibly hardened ✓
+Done. Single-file resume with on-disk checkpoint state.
 
-Success means the relay has rate limits, timeouts, metrics, and a clearer production posture. Done: per-IP rate limiting, HTTP timeouts, `/metrics` endpoint, deployment packaging.
+### M3 — relay hardening ✓
 
-### M4 — operator surfaces stay honest while gaining depth
+Done. Rate limits, timeouts, metrics, deployment packaging.
 
-Success means `bore-admin` and the browser surface grow only where they solve real relay/operator problems.
+### M4 — P2P-first default (current)
+
+Success means direct transport is the default path. The `--direct` flag is gone. `--relay-only` exists for forcing relay. Transport method is reported to the user. All existing relay tests still pass.
+
+### M5 — direct transport quality
+
+Success means direct transport is fast and reliable enough for production use. QUIC replaces custom ReliableConn. Multi-candidate gathering improves NAT traversal success rate.
+
+### M6 — operator surfaces grow with P2P reality
+
+Success means the browser and admin surfaces reflect the P2P-first reality: transport method stats, direct vs relay breakdown, signaling health.
 
 ---
 
 ## Phase dashboard
 
-### Phase 0 — relay-based encrypted transfer path
+### Phase 0 — relay-based encrypted transfer path (legacy, still functional)
 
-Status: done / checked
+Status: done / checked — now serves as fallback transport
 
 Checklist:
 
@@ -401,34 +434,24 @@ Checklist:
 - [x] `bore-admin status` exists
 - [x] relay-served browser surface exists
 
-Reality check:
+Note: Phase 0 is the foundation. The relay path continues to work as the automatic fallback when direct transport fails.
 
-- do not treat Phase 0 completion as repo completion
+### Phase 1 — direct-path infrastructure (legacy, integrated)
 
-### Phase 1 — direct-path integration
-
-Status: implementation complete, pending real-world NAT validation
+Status: done / checked — infrastructure integrated into client, promoted to default in Phase 5
 
 Checklist:
 
 - [x] transport abstraction layer with `Conn` and `Dialer`
 - [x] relay transport implementing `Dialer`
-- [x] direct transport stub implementing `Dialer`
+- [x] direct transport implementing `Dialer`
 - [x] selector with direct-first and relay-fallback logic
 - [x] rendezvous flow wired to `Dialer`
-- [x] define the relay-coordinated peer-candidate exchange needed for direct attempts
-- [x] publish and consume direct-path candidate data during rendezvous
-- [x] wire `internal/punchthrough/` STUN and NAT discovery into direct dial attempts
-- [x] add UDP reliability/framing semantics suitable for encrypted file transfer
-- [x] record why direct mode fell back so tests and operators can explain the downgrade
-- [x] add deterministic verification for direct-path success and relay fallback behavior
-- [x] prove the selector still lands on the existing relay path cleanly when direct mode is impossible
-
-Exit criteria:
-
-- direct mode implementation is complete with STUN discovery, signaling, hole-punching, and reliability framing
-- relay remains the default and only production-verified path until real-world NAT testing validates direct mode
-- `--direct` flag exists for opt-in experimentation
+- [x] relay-coordinated peer-candidate exchange
+- [x] STUN and NAT discovery wired into direct dial
+- [x] UDP reliability/framing layer for direct transport
+- [x] fallback reason tracking for transport decisions
+- [x] deterministic verification for direct-path and relay fallback
 
 ### Phase 2 — transfer durability
 
@@ -436,25 +459,11 @@ Status: done / checked
 
 Checklist:
 
-- [x] choose and document the resume-state shape before writing code blindly
-- [x] persist enough sender/receiver state to resume a single-file transfer safely
-- [x] define restart vs resume rules when metadata or digests do not match
-- [x] add interruption-recovery tests for relay-based transfers first
-- [ ] add directory transfer only after single-file resume semantics are solid and explicit
-
-Exit criteria:
-
-- a stopped single-file transfer can resume or restart with deterministic behavior and tests
-
-Implementation notes:
-
-- wire protocol extended with `ResumeOffer (0x04)` message: receiver → sender after header
-- resume state persisted as `<outputDir>/.bore/resume-<transferID>.json` + partial data file
-- transfer ID is a deterministic hash of (filename, size, SHA-256, chunk_size) — same file always resumes regardless of relay room or rendezvous code
-- restart-vs-resume rules: metadata must match AND partial file byte count must be correct; any mismatch triggers full restart from chunk 0
-- final SHA-256 covers entire reassembled file; if resumed data was corrupted, hash check fails and state is cleaned up
-- `ReceiveFile` in engine handles disk-based resume; `ReceiveToFile` in rendezvous wires it into the full flow
-- all existing tests updated for the new protocol; 14 new tests added for resume state persistence, protocol encoding, disk-based receive, and resume behavior
+- [x] resume-state shape documented
+- [x] sender/receiver state persisted for single-file resume
+- [x] restart vs resume rules defined and tested
+- [x] interruption-recovery tests for relay-based transfers
+- [ ] directory transfer (after single-file resume is solid)
 
 ### Phase 3 — relay hardening
 
@@ -462,29 +471,12 @@ Status: done / checked
 
 Checklist:
 
-- [x] add explicit rate limiting around room creation, room joins, and connection churn
-- [x] add quotas or stronger resource controls for room occupancy and message pressure
-- [x] add explicit HTTP server timeouts and tighten transport guardrails
-- [x] add metrics endpoint and operator-facing counters
-- [x] tighten deployment and service packaging rails
-- [ ] add admin-only profiling hooks only if they earn their keep operationally
-
-Exit criteria:
-
-- the relay reads as deliberately hardened, not merely functional
-
-Implementation notes:
-
-- `internal/relay/ratelimit/` provides per-IP token bucket rate limiting with automatic stale entry cleanup
-- `/ws` and `/signal` endpoints enforce configurable per-IP rate limits (default: 30 req/min)
-- `internal/relay/metrics/` provides atomic operator-facing counters: active/total WS connections, rooms created/joined/expired/relayed, bytes/frames relayed, rate limit hits, WS errors, signal exchanges
-- `/metrics` endpoint exposes a JSON snapshot of all counters
-- HTTP server now has explicit timeouts: read (30s), write (30s), idle (120s), read header (10s), max header (1 MB)
-- `DefaultServerConfig()` provides production-ready defaults for all timeouts and rate limits
-- room registry supports `OnExpire` callback for metrics integration
-- `Dockerfile` for multi-stage relay build with health check, non-root user, and minimal image
-- `deploy/bore-relay.service` systemd unit with security hardening directives
-- 8 new rate limit tests, 3 new metrics tests, 2 new room callback tests added
+- [x] per-IP rate limiting on room creation, joins, and connections
+- [x] quotas and resource controls for room occupancy
+- [x] explicit HTTP server timeouts
+- [x] metrics endpoint and operator counters
+- [x] deployment and service packaging
+- [ ] admin-only profiling hooks (deferred)
 
 ### Phase 4 — browser and operator surface
 
@@ -494,47 +486,97 @@ Checklist:
 
 - [x] relay-served browser surface under `web/`
 - [x] same-origin read-only status page
-- [x] product story aligned with the actual relay-based runtime
-- [ ] decide whether the browser surface should stay static and read-only until an auth story exists
-- [ ] add browser-level smoke coverage for `/` and `/ops/relay` if those pages become operationally critical
-- [ ] surface direct/fallback runtime state in the UI only after the transport truth exists underneath it
+- [x] product story aligned with actual runtime
+- [ ] update product story to reflect P2P-first architecture
+- [ ] surface transport method stats in operator page
+- [ ] show direct vs relay breakdown in `/ops/relay`
+- [ ] decide whether browser surface stays static until auth story exists
+
+### Phase 5 — P2P-first default path ★ ACTIVE
+
+Status: **done / checked**
+
+This is the architectural pivot. Direct transport becomes the default. Relay becomes fallback.
+
+Checklist:
+
+- [x] flip `Selector.EnableDirect` to true by default
+- [x] remove `--direct` flag from CLI
+- [x] add `--relay-only` flag to force relay transport
+- [x] report transport method (direct/relay) to user after transfer
+- [x] report fallback reason when relay is used
+- [x] update `bore status` output to reflect P2P-first identity
+- [x] update `bore components` output
+- [x] increase direct transport timeout for better success rate
+- [x] all existing tests pass with new defaults
+- [x] new tests for default-direct behavior
 
 Exit criteria:
 
-- the browser surface remains truthful while still feeling intentional and useful
+- `bore send` and `bore receive` attempt direct transport by default
+- relay fallback is automatic and transparent
+- `--relay-only` flag exists for forcing relay
+- transport method is visible to the user
+- all existing relay-based tests continue to pass
 
-### Phase 5 — operator tooling depth
+### Phase 6 — direct transport quality improvements
 
 Status: planned
 
 Checklist:
 
-- [ ] decide whether relay history belongs in `bore-admin`, the browser surface, or neither
-- [ ] add useful historical views only if they solve a real relay problem
-- [ ] add alerting and configuration basics without turning bore into a generic control plane
-- [ ] keep any persisted operator history small and relational if it is added later
+- [ ] evaluate QUIC (`quic-go`) as replacement for custom `ReliableConn`
+- [ ] implement QUIC-based direct transport with connection over punched UDP socket
+- [ ] add sliding window or proper congestion control to `ReliableConn` (if QUIC is deferred)
+- [ ] implement ICE-like multi-candidate gathering (multiple STUN servers, local/relay candidates)
+- [ ] add TURN-style authenticated relay data channel
+- [ ] measure and optimize direct transport throughput
+- [ ] add connection quality metrics (RTT, loss rate, throughput)
+- [ ] test across diverse real-world NAT configurations
+- [ ] add connection migration support for mobile/roaming scenarios
 
 Exit criteria:
 
-- operator tooling solves real relay/operator pain instead of inventing dashboard theater
+- direct transport throughput is competitive with relay for large files
+- NAT traversal success rate is measured and documented
+- fallback to relay is faster and more graceful
 
-### Phase 6 — verification and release discipline
+### Phase 7 — operator and browser surfaces for P2P reality
+
+Status: planned
+
+Checklist:
+
+- [ ] show transport method breakdown (direct vs relay) in `/ops/relay`
+- [ ] add signaling health metrics to `/metrics`
+- [ ] add direct transport success/failure rates to operator view
+- [ ] decide whether relay history needs persistence
+- [ ] add useful historical views only if they solve real problems
+- [ ] add alerting basics without turning bore into a control plane
+
+Exit criteria:
+
+- operator surfaces reflect the actual P2P-first runtime
+- signaling and direct transport health are observable
+
+### Phase 8 — verification and release discipline
 
 Status: active foundation, unfinished standards
 
 Checklist:
 
-- [x] root `.github/workflows/ci.yml` runs component verification from the consolidated module layout
-- [x] add `golangci-lint run` to CI
-- [x] add `govulncheck ./...` to CI
+- [x] root `.github/workflows/ci.yml` runs component verification
+- [x] `golangci-lint run` in CI
+- [x] `govulncheck ./...` in CI
 - [ ] cache Bun dependencies for the `web/` job
 - [ ] add fuzz targets for rendezvous code and transfer frame parsing
-- [ ] add a root task runner only if the command surface grows large enough to justify it
-- [ ] keep `README.md`, `BUILD.md`, `ARCHITECTURE.md`, and `SECURITY.md` aligned whenever runtime claims change
+- [ ] add integration test for full direct transfer (loopback STUN mock)
+- [ ] add integration test for direct-fails-relay-succeeds path
+- [ ] keep all docs aligned when runtime claims change
 
 Exit criteria:
 
-- the repo proves its claims with repeatable checks and fewer hand-maintained assumptions
+- the repo proves its claims with repeatable checks
 
 ---
 
@@ -545,9 +587,8 @@ Use the narrowest verification that proves the current claim.
 ### Docs-only changes
 
 - re-read the touched docs for consistency
-- confirm current-state sections only describe implemented behavior
-- confirm planned sections are explicitly labeled as planned or active work
-- confirm the doc still reads like an active program rather than a frozen status note
+- confirm current-state sections describe implemented behavior
+- confirm planned sections are labeled as planned or active
 
 ### Web changes
 
@@ -593,77 +634,106 @@ go build ./cmd/bore-admin
 
 Run every affected command above, then verify the docs still match the code path that actually ships.
 
+### Full pre-commit verification
+
+```bash
+gofmt -w .
+go vet ./...
+go test ./...
+go build ./cmd/bore
+```
+
 ---
 
 ## Working rules
 
 1. Keep the relay payload-blind. If it can inspect file contents, the design regressed.
 2. Treat the rendezvous code as cryptographic input, not just a locator.
-3. Do not overclaim direct mode. The reliable verified path today is relay-based.
-4. Keep docs honest. Aspirational language belongs in planned sections, not current-state summaries.
-5. Keep the browser surface honest and narrow. New web/UI work should support the real product or operator story, not invent a control plane the runtime does not have.
+3. Direct transport is the default. Relay is the fallback. Docs should reflect this.
+4. End-to-end encryption works identically regardless of transport method.
+5. Keep docs honest. The browser surface and operator tools should match runtime reality.
 6. Run the narrowest meaningful verification first. Broaden only when the change surface demands it.
 7. If you change architecture or security claims, update `BUILD.md`, `ARCHITECTURE.md`, and `SECURITY.md` in the same pass.
-8. If Phase 0 is the only thing that looks finished in the doc, the doc is doing its job; the repo still is not finished.
+8. The relay is a signaling server first, fallback transport second. Design decisions should respect this hierarchy.
 
 ---
 
 ## Risks and open questions
 
-### Risk: direct-path groundwork exists, but the runtime proof does not
+### Risk: direct transport may fail across many real-world NATs
 
 Mitigation:
 
-- avoid marketing bore as direct-first today
-- describe direct transport as the next implementation target, not a current capability
-- make fallback reasons observable before changing any README/product copy
+- relay fallback is automatic and transparent
+- fallback reasons are observable for debugging
+- the user always gets their file transferred — the question is which path
+- measuring real-world success rate is a priority for Phase 6
+
+### Risk: ReliableConn throughput is limited
+
+Mitigation:
+
+- stop-and-wait protocol is sufficient for smaller files
+- QUIC migration planned in Phase 6 for production-quality throughput
+- relay fallback provides a proven fast path while ReliableConn improves
 
 ### Risk: resume state is per-receiver only
 
 Mitigation:
 
 - resume state lives on the receiver's filesystem only
-- the sender re-sends from the requested chunk on each connection — it does not persist progress
-- directory transfer resume requires additional design work beyond single-file resume
+- the sender re-sends from the requested chunk on each connection
+- directory transfer resume requires additional design work
 
 ### Risk: relay hardening is baseline, not audited
 
 Mitigation:
 
-- the relay now enforces per-IP rate limits, HTTP timeouts, and tracks operational metrics
-- deployment packaging (Dockerfile, systemd) is available
-- treat this as deliberately hardened for small-scale use, not as externally audited
-- an external security review is still needed before making stronger claims
+- the relay enforces per-IP rate limits, HTTP timeouts, and tracks metrics
+- deployment packaging is available
+- external security review still needed
 
-### Open question: how much operator surface bore actually wants
+### Risk: signaling depends on relay availability
 
-Useful next steps are clear:
+Mitigation:
 
-- decide whether relay observations need persistence at all before adding a store
-- add simple operator views beyond the single status summary only if they solve a real relay problem
-- add alerting and configuration basics without turning bore into a control plane
-- if metrics or history need local durability later, start with a small relational SQLite store
+- the relay is lightweight and self-hostable
+- signaling is a brief WebSocket exchange, not a sustained connection
+- future work: support alternative signaling mechanisms (shared secret + known endpoint)
+
+### Open question: QUIC vs improved ReliableConn
+
+Current answer:
+
+- QUIC (`quic-go`) provides production-quality reliability, congestion control, and multiplexing
+- custom ReliableConn is simpler but limited to stop-and-wait
+- decision deferred to Phase 6; current ReliableConn works for the default-flip milestone
 
 ### Open question: when directory transfer becomes worth it
 
 Current answer:
 
 - not before single-file resume and restart semantics are trustworthy
+- not before direct transport quality is proven
 
 ---
 
 ## Immediate next moves
 
-### Default next lane
+### Current lane: Phase 5 complete
 
-If you are choosing the next substantive feature lane, pick **Phase 4 — browser and operator surface** or **Phase 6 — verification and release discipline** depending on whether the priority is user-facing polish or CI hardening.
+Phase 5 (P2P-first default) is done. The next highest-leverage moves are:
+
+1. **Phase 6 — direct transport quality**: evaluate QUIC, measure throughput, improve NAT traversal
+2. **Phase 4 — browser surface**: update product story to reflect P2P-first reality
+3. **Phase 8 — verification**: add integration tests for direct and fallback paths
 
 ### If the goal is cleanup instead of features
 
-1. tighten docs around the relay-based path and current limits
-2. remove claims that imply direct transport is already present
-3. keep the browser and operator surface clearly scoped to what it actually does today
-4. trim stale commentary that does not help a future maintainer ship the next step
+1. update browser surface copy to reflect P2P-first architecture
+2. add transport method stats to the operator page
+3. improve the direct transport timeout and retry behavior
+4. add more comprehensive tests for NAT combinations
 
 ---
 
@@ -676,11 +746,10 @@ If you are resuming this repo later, do this in order:
 3. read `ARCHITECTURE.md` and `SECURITY.md` if the task touches behavior or claims
 4. inspect `git status`
 5. treat the repo root as the source of truth for Go builds
-6. pick one lane only:
-   - direct transport integration
-   - resume support
-   - relay hardening
-   - browser and operator surface work
-   - bore-admin implementation
+6. pick one lane:
+   - direct transport quality (Phase 6)
+   - browser/operator surface updates (Phase 4/7)
+   - verification and CI (Phase 8)
+   - directory transfer
 7. run focused verification before and after the change
-8. before calling a lane done, make sure the docs still read like an active program rather than a frozen snapshot
+8. before calling a lane done, make sure the docs still read like an active program

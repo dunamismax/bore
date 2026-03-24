@@ -2,29 +2,32 @@
 
 ## Current security status
 
-bore currently implements a real relay-based end-to-end encrypted transfer path in the Go client.
+bore implements a P2P-first, end-to-end encrypted file transfer path in the Go client. The default transport is direct peer-to-peer with automatic relay fallback. End-to-end encryption protects all file data regardless of transport path.
 
 Implemented today:
 
-- Noise `XXpsk0` handshake in `internal/client/crypto`
+- Noise `XXpsk0` handshake in `internal/client/crypto` (transport-agnostic)
 - HKDF-SHA256 derivation of a PSK from the rendezvous code
 - ChaCha20-Poly1305 encrypted secure channel
 - SHA-256 file integrity verification in the transfer engine
-- payload-blind relay forwarding in `internal/relay/`
+- direct P2P transport via STUN discovery and UDP hole-punching (default path)
+- payload-blind relay forwarding in `internal/relay/` (fallback path)
+- relay-coordinated signaling for P2P candidate exchange
+- per-IP rate limiting on relay WebSocket and signaling endpoints
+- explicit HTTP server timeouts on the relay
+- operational metrics tracking
 - room expiry and bounded in-memory room tracking in the relay
-- relay `/healthz` and `/status` endpoints that expose aggregate operator data only
-- same-origin relay-served web pages at `/` and `/ops/relay/`, with the ops page reading aggregate data from `/status`
+- relay `/healthz`, `/status`, and `/metrics` endpoints
+- resumable single-file transfers with on-disk checkpoint state
+- same-origin relay-served web pages at `/` and `/ops/relay/`
 
 Important limits on those claims:
 
-- the currently verified path is relay-based, not direct peer-to-peer
-- the relay is functional but not yet hardened with rate limiting or metrics
-- the browser surface is read-only and intentionally narrow; it is not an authenticated control plane
+- direct transport uses a custom UDP reliability layer (not QUIC), with limited congestion control
 - the system has not had an external security audit yet
-- resumable transfer behavior is not implemented yet
 - bore is not an anonymity tool
 
-If you use bore today, treat it as an implemented encrypted transfer tool with unfinished operational hardening, not as a fully audited or production-hardened security product.
+If you use bore today, treat it as an implemented P2P encrypted transfer tool with real hardening but without external audit, not as a fully audited security product.
 
 ---
 
@@ -155,9 +158,15 @@ Still not implemented:
 
 The web layer is intentionally read-only. It does not add auth, persistent operator state, or mutation endpoints. Treat it as a convenience view over aggregate relay state, not a security boundary or control plane. If Bore later adds local durable operator state or resumable-transfer metadata, start with a small relational SQLite store by default.
 
-### Direct transport is not active yet
+### Direct transport is the default path
 
-`internal/punchthrough/` exists, but it is not wired into the current client flow. Security claims should stay scoped to the current relay-based path.
+Direct P2P transport is the default. Security considerations:
+
+- STUN probes reveal the peer's public IP to the STUN server
+- candidate exchange through the relay's signaling channel reveals both peers' public addresses to the relay operator
+- the direct UDP connection between peers is encrypted via Noise XXpsk0 (same as relay path)
+- the custom `ReliableConn` UDP framing layer provides reliability but not congestion control comparable to TCP/QUIC
+- an active network attacker between peers cannot read or modify file data due to AEAD encryption, but can disrupt the direct connection (forcing relay fallback)
 
 ### Resume state is filesystem-based
 
@@ -223,7 +232,7 @@ If you discover a security vulnerability in bore, report it responsibly:
 | Resumable transfer with integrity verification | Implemented |
 | Threat model documentation | Present |
 | Local tests for client and relay packages | Present |
-| Direct transport security review | Deferred until direct transport is integrated |
+| Direct transport security review | Implemented, not externally audited |
 | Relay abuse controls | Implemented (rate limiting, timeouts, metrics) |
 | External review / audit | TODO |
 

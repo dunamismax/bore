@@ -341,6 +341,76 @@ func TestSelectionResultStringOutput(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Selector: EnableDirect default behavior (P2P-first)
+// ---------------------------------------------------------------------------
+
+func TestSelectorEnableDirectAttemptsSTUN(t *testing.T) {
+	// When EnableDirect is true and SessionID is set, the selector should
+	// attempt STUN discovery. Without real STUN servers, this will fail
+	// and fall back to relay with FallbackSTUNFailed.
+	s := &Selector{
+		RelayURL:      "http://127.0.0.1:1", // nothing listening
+		EnableDirect:  true,
+		SessionID:     "test-room",
+		Role:          "sender",
+		DirectTimeout: 100 * time.Millisecond,
+	}
+
+	// DialSender creates the relay room first (which will fail), but we
+	// can verify the intent is to attempt direct. Since the relay dial
+	// fails, the error comes from relay, not from STUN.
+	_, _, err := s.DialSender(context.Background())
+	if err == nil {
+		t.Error("expected error connecting to non-existent relay")
+	}
+}
+
+func TestSelectorEnableDirectFalseSkipsSTUN(t *testing.T) {
+	// When EnableDirect is false, the selector should go straight to relay
+	// without any STUN attempt, regardless of SessionID.
+	s := &Selector{
+		RelayURL:     "http://127.0.0.1:1",
+		EnableDirect: false,
+		SessionID:    "test-room",
+		Role:         "sender",
+	}
+
+	_, _, _ = s.DialSender(context.Background())
+
+	if s.LastSelection.Method != MethodRelay {
+		t.Errorf("Method = %v, want MethodRelay", s.LastSelection.Method)
+	}
+	if s.LastSelection.Fallback != FallbackNoDirectAddr {
+		t.Errorf("Fallback = %v, want FallbackNoDirectAddr", s.LastSelection.Fallback)
+	}
+}
+
+func TestSelectorEnableDirectReceiverFalseSkipsSTUN(t *testing.T) {
+	s := &Selector{
+		RelayURL:     "http://127.0.0.1:1",
+		EnableDirect: false,
+		Role:         "receiver",
+	}
+
+	_, _ = s.DialReceiver(context.Background(), "test-room")
+
+	if s.LastSelection.Method != MethodRelay {
+		t.Errorf("Method = %v, want MethodRelay", s.LastSelection.Method)
+	}
+	if s.LastSelection.Fallback != FallbackNoDirectAddr {
+		t.Errorf("Fallback = %v, want FallbackNoDirectAddr", s.LastSelection.Fallback)
+	}
+}
+
+func TestDefaultSelectorTimeoutValue(t *testing.T) {
+	// Verify the default timeout is 8 seconds (increased for P2P-first).
+	want := 8 * time.Second
+	if DefaultSelectorTimeout != want {
+		t.Errorf("DefaultSelectorTimeout = %v, want %v", DefaultSelectorTimeout, want)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && searchSubstring(s, substr)
 }

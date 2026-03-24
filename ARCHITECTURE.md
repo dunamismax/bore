@@ -8,9 +8,9 @@ This document describes the current repo architecture and the near-term shape it
 
 ## System Overview
 
-The repo is now a single root Go module: `github.com/dunamismax/bore`.
+The repo is a single root Go module: `github.com/dunamismax/bore`.
 
-bore currently consists of five tracked components:
+bore is a **P2P-first, relay-fallback** encrypted file transfer tool. The default transfer path attempts a direct peer-to-peer connection. The relay serves as a signaling server for the P2P connection and as a fallback transport when direct fails.
 
 ```text
 ┌─────────────┐                           ┌─────────────┐
@@ -19,30 +19,35 @@ bore currently consists of five tracked components:
 │   (Go)      │                           │   (Go)      │
 └──────┬──────┘                           └──────┬──────┘
        │                                         │
-       │      encrypted application frames       │
-       └───────────────┬─────────────────────────┘
+       │    1. STUN discovery (each peer)        │
+       │    2. Candidate exchange via relay       │
+       │    3. Direct UDP hole-punch              │
+       │    4. E2E encrypted file transfer        │
+       │◄───────────────────────────────────────►│
+       │                                         │
+       │    (fallback: relay forwards encrypted  │
+       │     bytes if direct connection fails)    │
+       │                                         │
+                ┌──────────────┐
+                │ Go relay     │
+                │ (signaling + │
+                │  fallback)   │
+                └──────┬───────┘
                        │
                 ┌──────▼──────┐
-                │ Go relay    │◄──────────────┐
-                │ (payload-   │               │
-                │ blind)      │               │
-                └──────┬──────┘               │
-                       │                      │
-                ┌──────▼──────┐        ┌──────▼──────┐
-                │ punchthrough│        │ web surface │
-                │ groundwork  │        │ React + Vite│
-                │ (future     │        │ same-origin │
-                │ direct path)│        │ via relay   │
-                └─────────────┘        └─────────────┘
+                │ web surface │
+                │ React + Vite│
+                │ same-origin │
+                └─────────────┘
 ```
 
-1. **Client (`cmd/bore` + `internal/client/`)** generates or parses a rendezvous code, performs the Noise handshake, and streams encrypted file data.
-2. **Relay (`cmd/relay` + `internal/relay/`)** pairs sender and receiver, forwards encrypted frames over WebSockets, and serves the embedded browser surface.
-3. **Web (`web/`)** provides the product-facing homepage and a read-only relay ops page, built with Bun + React + Vite + TypeScript.
-4. **Punchthrough (`cmd/punchthrough` + `internal/punchthrough/`)** contains STUN and UDP hole-punching primitives for a future direct path.
-5. **bore-admin (`cmd/bore-admin`)** is a minimal operator CLI that queries relay status but does not participate in transfer runtime behavior.
+### Component roles
 
-The current default and production-verified path is **relay-based transfer**. Direct transport is implemented and opt-in via `--direct` but has not yet been validated across diverse real-world NAT environments.
+1. **Client (`cmd/bore` + `internal/client/`)** generates or parses a rendezvous code, discovers peers via STUN, exchanges candidates through the relay's signaling channel, attempts direct hole-punching, falls back to relay if needed, performs the Noise handshake, and streams encrypted file data.
+2. **Relay (`cmd/relay` + `internal/relay/`)** provides the signaling endpoint for P2P candidate exchange, serves as a fallback transport by forwarding encrypted frames over WebSockets, manages rooms, and serves the embedded browser surface.
+3. **Web (`web/`)** provides the product-facing homepage and a read-only relay ops page, built with Bun + React + Vite + TypeScript.
+4. **Punchthrough (`cmd/punchthrough` + `internal/punchthrough/`)** contains STUN and UDP hole-punching primitives, integrated into the client's default transport path.
+5. **bore-admin (`cmd/bore-admin`)** is a minimal operator CLI that queries relay status.
 
 ---
 
@@ -60,8 +65,8 @@ internal/
 │   ├── code/                # rendezvous code generation/parsing
 │   ├── crypto/              # Noise handshake + secure channel
 │   ├── engine/              # transfer framing, send/receive engine
-│   ├── rendezvous/          # relay session orchestration
-│   └── transport/           # WebSocket relay transport + selector
+│   ├── rendezvous/          # session orchestration
+│   └── transport/           # transport selector, direct, relay, signaling
 ├── punchthrough/
 │   ├── punch/               # NAT classification + punch engine
 │   └── stun/                # STUN client and probing primitives
@@ -69,7 +74,7 @@ internal/
     ├── metrics/             # atomic operator-facing counters
     ├── ratelimit/           # per-IP token bucket rate limiting
     ├── room/                # room lifecycle and registry
-    ├── transport/           # WebSocket server + frame forwarding
+    ├── transport/           # WebSocket server + signaling + frame forwarding
     └── webui/               # embedded static build output + HTTP handler
 
 web/
@@ -91,11 +96,32 @@ CLI
   ↓
 rendezvous orchestration
   ↓
+transport selector (direct-first, relay-fallback)
+  ↓
+┌─────────────────────────┬─────────────────────────┐
+│ direct transport        │ relay transport          │
+│ STUN → signal → punch   │ WebSocket relay          │
+│ → ReliableConn          │ → wsConn                 │
+└─────────────────────────┴─────────────────────────┘
+  ↓
 crypto + transfer engine
   ↓
-transport abstraction (`io.ReadWriter`)
-  ↓
-WebSocket relay transport today / direct transport later
+io.ReadWriter (transport-agnostic)
+```
+
+### Transport selection flow
+
+```text
+1. Selector receives dial request
+2. STUN probe → discover public address + NAT type
+3. Exchange candidates via relay /signal endpoint
+4. Evaluate NAT combination for hole-punch feasibility
+5. Attempt UDP hole-punch
+6. On success → direct transport (ReliableConn)
+7. On failure → relay transport (wsConn)
+
+Both paths deliver an io.ReadWriteCloser to the crypto layer.
+The Noise handshake and transfer engine are transport-agnostic.
 ```
 
 ### Package responsibilities
@@ -107,6 +133,7 @@ Owns:
 - CLI argument parsing
 - user-facing help and status output
 - selecting `send`, `receive`, `status`, and `components` flows
+- constructing the transport `Selector` with `EnableDirect: true` by default
 
 Does not own:
 
@@ -141,6 +168,7 @@ Implementation truth today:
 - protocol suite: `Noise_XXpsk0_25519_ChaChaPoly_SHA256`
 - counter-based nonces
 - post-handshake encrypted application frames
+- **transport-agnostic**: works identically over direct UDP or WebSocket relay
 
 #### `internal/client/engine`
 
@@ -152,20 +180,6 @@ Owns:
 - SHA-256 integrity verification for the received file
 - resume state persistence and validation (`ResumeState`, `TransferID`)
 - restart-vs-resume decision logic (metadata match + partial file validation)
-
-Current scope:
-
-- single file send/receive with resume support
-- relay-based transport path
-
-Resume protocol:
-
-- after the receiver gets the file header, it computes a `TransferID` (deterministic hash of filename, size, SHA-256, chunk_size)
-- if valid resume state and matching partial data exist on disk, the receiver sends `ResumeOffer(startChunk=N)`
-- otherwise, the receiver sends `ResumeOffer(startChunk=0)` for a fresh transfer
-- the sender skips chunks 0..N-1 and streams from chunk N onward
-- on interruption, the receiver persists its partial progress; on success, resume state is cleaned up
-- final SHA-256 covers the entire reassembled file, not just the resumed portion
 
 Not yet in this layer:
 
@@ -180,30 +194,36 @@ Owns:
 - room creation / room join flow delegated to the dialer
 - bridging transport + crypto + engine into the user flow
 
-This is the current happy-path integration layer for the client. It is transport-agnostic: callers supply a `Dialer`, which may be a `RelayDialer`, `Selector`, or any future implementation.
+This is the integration layer. It is transport-agnostic: callers supply a `Dialer`, which is typically a `Selector` that tries direct first.
 
 #### `internal/client/transport`
 
 Owns:
 
 - transport abstraction: `Conn` and `Dialer`
-- `RelayDialer`: WebSocket relay transport
+- `Selector`: default dialer that tries direct first, falls back to relay
 - `DirectDialer`: UDP direct transport with hole-punch integration
-- `Selector`: tries direct first (when `EnableDirect` is set), falls back to relay
-- `SelectionResult`: records which transport was used and why, including `Method`, `FallbackReason`, and `DirectErr`
-- `Candidate` and `CandidatePair`: peer address and NAT type exchange types for relay-coordinated direct-path signaling
-- `ExchangeCandidates`: relay-coordinated signaling client for candidate exchange via `/signal` WebSocket endpoint
-- `DiscoverCandidate`: STUN discovery wrapper that produces a `Candidate` from a probe
-- `ReliableConn`: UDP reliability/framing layer with sequence numbers, ACK, retransmit, and FIN — wraps raw UDP into an `io.ReadWriteCloser` suitable for the Noise handshake and transfer engine
-- adapting transport IO to what the crypto and engine layers expect
+- `RelayDialer`: WebSocket relay transport
+- `SelectionResult`: records which transport was used and why
+- `Candidate` and `CandidatePair`: peer address and NAT type exchange types
+- `ExchangeCandidates`: relay-coordinated signaling for candidate exchange
+- `DiscoverCandidate`: STUN discovery wrapper
+- `ReliableConn`: UDP reliability/framing layer (stop-and-wait with retransmit)
 
-The CLI constructs a `Selector` dialer. With `--direct`, the selector runs STUN discovery, exchanges candidates through the relay's `/signal` endpoint, evaluates NAT feasibility, and attempts hole-punching before falling back to relay. Without `--direct`, the selector goes straight to relay. After each dial, `Selector.LastSelection` records the transport decision and fallback reason with expanded reasons including `FallbackSTUNFailed`, `FallbackNATUnfavorable`, `FallbackPunchFailed`, and `FallbackSignalingFailed`.
+**Default behavior**: The CLI constructs a `Selector` with `EnableDirect: true`. The selector runs STUN discovery, exchanges candidates through the relay's `/signal` endpoint, evaluates NAT feasibility, and attempts hole-punching before falling back to relay. Use `--relay-only` to skip the direct attempt.
+
+After each dial, `Selector.LastSelection` records the transport decision with fallback reasons: `STUNFailed`, `NATUnfavorable`, `PunchFailed`, `SignalingFailed`, `DialFailed`, `Timeout`.
 
 ---
 
 ## Relay Architecture (`cmd/relay` + `internal/relay/`)
 
-The relay is intentionally narrow. It acts as a room broker and encrypted byte pipe, not an application-layer participant. It enforces per-IP rate limits, explicit HTTP server timeouts, and tracks operational metrics — all without inspecting relay payloads.
+The relay serves two purposes:
+
+1. **Signaling server** — coordinates P2P candidate exchange via `/signal` WebSocket endpoint
+2. **Fallback transport** — forwards encrypted bytes via `/ws` when direct P2P fails
+
+It is intentionally narrow. It never inspects relay payloads. It enforces per-IP rate limits, HTTP timeouts, and tracks operational metrics.
 
 ### Layering
 
@@ -212,74 +232,117 @@ cmd/relay
   ↓
 WebSocket server / connection handling
   ↓
-room registry + room lifecycle
+├── /signal endpoint (P2P signaling — primary purpose)
+├── /ws endpoint (fallback transport — encrypted byte forwarding)
+├── /healthz, /status, /metrics (operator endpoints)
+└── / and /ops/relay (embedded browser surface)
   ↓
-encrypted frame forwarding
+room registry + room lifecycle
 ```
 
 ### Package responsibilities
-
-#### `cmd/relay`
-
-Owns:
-
-- process startup
-- bind address configuration
-- wiring the transport server to the room registry
-- shutdown orchestration
-
-#### `internal/relay/room`
-
-Owns:
-
-- room creation and lookup
-- sender/receiver pairing
-- room lifecycle transitions
-- expiration / cleanup behavior
 
 #### `internal/relay/transport`
 
 Owns:
 
 - WebSocket accept/upgrade path
-- sender and receiver connection handling
-- frame relay between paired peers with byte/frame counting
-- `/signal` WebSocket endpoint for relay-coordinated candidate exchange (direct-path signaling)
+- `/signal` WebSocket endpoint for relay-coordinated candidate exchange (signaling)
+- sender and receiver connection handling on `/ws`
+- frame relay between paired peers with byte/frame counting (fallback transport)
 - `/healthz`, `/status`, and `/metrics` operator endpoints
 - per-IP rate limiting on `/ws` and `/signal` endpoints
-- explicit HTTP server timeouts (read, write, idle, header)
+- explicit HTTP server timeouts
 - same-origin serving for the embedded static web UI
 
 Design constraints:
 
 - do not decrypt payloads
-- do not reinterpret the encrypted application protocol or candidate content
+- do not reinterpret encrypted application protocol or candidate content
 - keep server state minimal and disposable
 
-#### `internal/relay/ratelimit`
+#### Other relay packages
 
-Owns:
+- `internal/relay/room` — room creation, lookup, pairing, lifecycle, TTL
+- `internal/relay/ratelimit` — per-IP token bucket rate limiting
+- `internal/relay/metrics` — atomic operator-facing counters
+- `internal/relay/webui` — embedded SPA build artifacts
 
-- per-IP token bucket rate limiting
-- automatic cleanup of stale entries
-- IP extraction from HTTP requests
+---
 
-#### `internal/relay/metrics`
+## Punchthrough Architecture (`cmd/punchthrough` + `internal/punchthrough/`)
 
-Owns:
+This component provides the NAT discovery and hole-punching primitives used by the client's **default** transport path.
 
-- atomic operator-facing counters (connections, rooms, bytes, frames, rate limit hits, errors, signal exchanges)
-- JSON-serializable snapshot for the `/metrics` endpoint
+### Integration into the default path
 
-#### `internal/relay/webui`
+```text
+bore send/receive
+  → Selector (EnableDirect: true by default)
+    → DiscoverCandidate (STUN probe)
+    → ExchangeCandidates (relay signaling)
+    → DirectDialer.dialWithPunch (hole-punching)
+    → ReliableConn (reliable UDP framing)
+    → Noise handshake + transfer engine
+```
 
-Owns:
+### Package responsibilities
 
-- embedded SPA build artifacts
-- static file resolution and SPA catch-all fallback
-- HTTP headers for the browser surface
+- `internal/punchthrough/stun` — STUN requests/responses, network probing, external address discovery
+- `internal/punchthrough/punch` — NAT classification, UDP hole-punching flow, config/types/errors
+- `cmd/punchthrough` — operator/dev CLI entry point for probing and testing
 
-The web build writes into `internal/relay/webui/dist/`, and the relay embeds that directory directly.
+---
+
+## Transfer Flow
+
+### Default flow (direct P2P)
+
+```text
+Sender                     Relay (signaling)              Receiver
+  │                            │                              │
+  │ 1. Create room             │                              │
+  │────────────────────────────►│                              │
+  │                            │                              │
+  │ 2. STUN probe              │  3. STUN probe               │
+  │ (discover public addr)     │  (discover public addr)      │
+  │                            │                              │
+  │ 4. Exchange candidates via /signal                        │
+  │────────────────────────────►│◄─────────────────────────────│
+  │◄────────────────────────────│──────────────────────────────►│
+  │                            │                              │
+  │ 5. Direct UDP hole-punch (bypasses relay)                 │
+  │◄─────────────────────────────────────────────────────────►│
+  │                            │                              │
+  │ 6. Noise XXpsk0 handshake (direct)                       │
+  │◄─────────────────────────────────────────────────────────►│
+  │                            │                              │
+  │ 7. Encrypted file transfer (direct)                      │
+  │─────────────────────────────────────────────────────────►│
+  │                            │                              │
+```
+
+### Fallback flow (relay transport)
+
+When direct connection fails at any step, the transfer proceeds through the relay:
+
+```text
+Sender                               Relay                         Receiver
+  │                                    │                              │
+  │ 1. Create room via /ws             │                              │
+  │───────────────────────────────────►│                              │
+  │                                    │ 2. Receiver joins via /ws    │
+  │                                    │◄─────────────────────────────│
+  │                                    │                              │
+  │ 3. Noise XXpsk0 handshake over relay                              │
+  │◄─────────────────────────────────────────────────────────────────►│
+  │                                    │                              │
+  │ 4. Encrypted file transfer via relay                              │
+  │─────────────────────────────────────────────────────────────────►│
+  │                                    │                              │
+```
+
+Both flows use identical encryption. The relay forwards encrypted bytes without decryption.
 
 ---
 
@@ -287,209 +350,55 @@ The web build writes into `internal/relay/webui/dist/`, and the relay embeds tha
 
 The web surface is intentionally thin and same-origin with the relay.
 
-### Layering
-
-```text
-React + TanStack Router (client-side routing)
-  ↓
-route components (home, ops/relay, 404)
-  ↓
-TanStack Query for relay status polling
-  ↓
-same-origin GET to relay `/status`
-  ↓
-Vite builds SPA into static assets under `internal/relay/webui/dist/`
-```
-
-### Responsibilities
-
-#### `web/src/routes`
-
-Owns:
-
-- the Bore product-facing homepage (`/`)
-- the relay operator page at `/ops/relay`
-- 404 catch-all route
-- root layout with shared navigation and footer
-- route-local content that stays aligned with the actual shipped runtime
-
-#### `web/src/lib`
-
-Owns:
-
-- relay status API client with Zod validation
-- formatting helpers for uptime, bytes, and timestamps
-- shared utility functions
-
-#### `web/src/components/ui`
-
-Owns:
-
-- shadcn/ui component primitives
-- project-owned UI building blocks rather than a remote dependency boundary
+- `web/src/routes` — homepage, relay ops page, 404 catch-all
+- `web/src/lib` — relay status API client with Zod validation
+- `web/src/components/ui` — shadcn/ui component primitives
 
 Design constraints:
 
 - keep the web surface read-only
 - do not add a second API just to support the status page
-- keep the browser story aligned with the existing relay-based product truth
-
----
-
-## Punchthrough Architecture (`cmd/punchthrough` + `internal/punchthrough/`)
-
-This component provides the NAT discovery and hole-punching primitives used by the client's direct transport path. It is integrated into the client runtime via `transport.DiscoverCandidate` and `transport.DirectDialer`.
-
-### Package responsibilities
-
-#### `internal/punchthrough/stun`
-
-Owns:
-
-- STUN requests/responses
-- network probing support
-- external address discovery and related typing/config
-
-#### `internal/punchthrough/punch`
-
-Owns:
-
-- NAT classification
-- UDP hole-punching flow primitives
-- related config/types/errors
-
-#### `cmd/punchthrough`
-
-Owns:
-
-- operator/dev CLI entry point for probing and testing the NAT tooling
-
-Current integration:
-
-- STUN probe results feed into `transport.Candidate` via `DiscoverCandidate`
-- hole-punch engine is invoked by `DirectDialer` when a `CandidatePair` with favorable NAT types is present
-- the `Selector` orchestrates the full flow: STUN → signaling → NAT check → punch → fallback
+- keep the browser story aligned with the actual P2P-first product truth
 
 ---
 
 ## Admin Surface (`cmd/bore-admin`)
 
-This component is a small but real operator CLI.
-
-What it is:
-
-- a Go CLI that queries the relay `/status` endpoint
-- a human-readable status summary for relay uptime, room counts, and limits
-- a place to grow additional relay monitoring and operator workflows later
-
-What it is not:
-
-- the browser dashboard itself
-- a metrics/history system
-- a storage layer
-- an operational dependency of the relay or client
-
-Keep docs honest: treat this component as minimal operator tooling alongside the read-only browser surface until it grows beyond status polling.
+A small operator CLI that queries the relay `/status` endpoint. It is not an operational dependency of the relay or client.
 
 ---
 
 ## Data And Persistence Posture
 
-Bore's current shipped architecture uses **filesystem-based resume state** on the receiver side and **no durable data layer** on the relay.
-
-Current truth:
-
-- the receiver persists resume state as JSON + partial data under `<outputDir>/.bore/`
-- resume state is keyed by a deterministic transfer ID derived from file metadata
-- the relay keeps active room state in an in-memory registry with TTL-based cleanup
-- the browser surface is a read-only same-origin view over live relay status
-- `bore-admin` is an on-demand polling CLI, not a history service
-- the client does not persist transfer history yet
+Bore's current architecture uses **filesystem-based resume state** on the receiver side and **no durable data layer** on the relay.
 
 If Bore later needs local durable state, the default path is:
 
 1. keep the data **relational**
 2. start with **SQLite**
-3. use handwritten SQL migrations and queries for any browser-owned persistence
-4. keep Go-side queries plain SQL first, with **`sqlc`** only if backend complexity earns it
-
-What Bore should avoid:
-
-- adding a database before a concrete feature needs one
-- inventing a document-store/MongoDB detour for relay history or resume metadata
-- treating the read-only web surface as if it already justified a control-plane backend
-
----
-
-## Transfer Flow
-
-### Current verified relay flow
-
-```text
-Sender                               Relay                         Receiver
-  │                                    │                              │
-  │ 1. Create/send room                │                              │
-  │───────────────────────────────────►│                              │
-  │                                    │                              │
-  │ 2. Display full rendezvous code    │                              │
-  │                                    │                              │
-  │                                    │ 3. Receiver joins room       │
-  │                                    │◄─────────────────────────────│
-  │                                    │                              │
-  │ 4. Noise XXpsk0 handshake over encrypted transport path           │
-  │◄─────────────────────────────────────────────────────────────────►│
-  │                                    │                              │
-  │ 5. Sender sends file header                                      │
-  │─────────────────────────────────────────────────────────────────►│
-  │                                    │                              │
-  │ 6. Receiver checks for resume state, sends ResumeOffer(startChunk)│
-  │◄─────────────────────────────────────────────────────────────────│
-  │                                    │                              │
-  │ 7. Sender streams chunks from startChunk + end                   │
-  │─────────────────────────────────────────────────────────────────►│
-  │                                    │                              │
-  │ 8. Receiver reassembles and verifies SHA-256                     │
-  │                                    │                              │
-```
-
-### Planned transport selection
-
-```text
-                    ┌────────────────────┐
-                    │ Can peers connect  │
-                    │ directly?          │
-                    └────────┬───────────┘
-                             │
-                   ┌─────────┴─────────┐
-                   │                   │
-                 Yes                  No
-                   │                   │
-            ┌──────┴──────┐    ┌───────┴───────┐
-            │ direct path │    │ relay path    │
-            │ via         │    │ via WebSocket │
-            │ punchthrough│    │ broker        │
-            └─────────────┘    └───────────────┘
-```
-
-This selection logic is planned, not current behavior.
+3. use handwritten SQL migrations and queries
+4. keep Go-side queries plain SQL first
 
 ---
 
 ## Design Rules
 
-1. **Docs describe the code that exists, not the code we wish existed.**
-2. **Relay stays payload-blind.**
-3. **Rendezvous code is cryptographic input, not cosmetic metadata.**
-4. **Direct transport is optional architecture, not a precondition for shipping the relay path.**
-5. **Minimal tools stay clearly labeled until they carry broader workload.**
+1. **Direct P2P is the default. Relay is the fallback.**
+2. **Docs describe the code that exists, not the code we wish existed.**
+3. **Relay stays payload-blind.**
+4. **Rendezvous code is cryptographic input, not cosmetic metadata.**
+5. **E2E encryption is transport-agnostic — works identically over direct or relay.**
+6. **Minimal tools stay clearly labeled until they carry broader workload.**
 
 ---
 
 ## Open Architectural Work
 
-- validate direct transport across diverse real-world NAT environments before promoting beyond opt-in
-- add directory transfer (after single-file resume semantics are proven)
-- decide how much operator surface `bore-admin` actually needs beyond relay status polling
-- add external security review and formal audit
+- evaluate QUIC for direct transport throughput (Phase 6)
+- implement ICE-like multi-candidate gathering for better NAT traversal
+- add directory transfer (after single-file resume is proven)
+- update browser surface to reflect P2P-first architecture
+- decide how much operator surface `bore-admin` actually needs
+- external security review and formal audit
 
 For the current execution plan and verification commands, see [BUILD.md](BUILD.md). For security claims and limits, see [SECURITY.md](SECURITY.md).
