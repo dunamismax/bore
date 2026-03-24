@@ -18,6 +18,7 @@ import (
 
 	"github.com/dunamismax/bore/client/internal/code"
 	"github.com/dunamismax/bore/client/internal/rendezvous"
+	"github.com/dunamismax/bore/client/internal/transport"
 )
 
 const version = "0.1.0"
@@ -163,8 +164,11 @@ func cmdSend(args []string) error {
 
 	fmt.Fprintf(os.Stderr, "bore send -- %s (%d bytes)\n\n", filename, len(data))
 
+	dialer := &transport.Selector{RelayURL: relayURL}
+
 	result, err := rendezvous.SendWithCodeCallback(
 		context.Background(),
+		dialer,
 		relayURL,
 		filename,
 		data,
@@ -208,7 +212,9 @@ func cmdReceive(args []string) error {
 	fmt.Fprintln(os.Stderr, "bore receive -- connecting...")
 	fmt.Fprintln(os.Stderr)
 
-	result, err := rendezvous.Receive(context.Background(), codeStr, relayURL)
+	dialer := &transport.Selector{RelayURL: relayURL}
+
+	result, err := rendezvous.Receive(context.Background(), codeStr, dialer, relayURL)
 	if err != nil {
 		return fmt.Errorf("transfer failed: %w", err)
 	}

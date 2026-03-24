@@ -1,7 +1,7 @@
 // Package rendezvous implements the bore send/receive coordination flows.
 //
 // Sender flow:
-//  1. Connect to relay as sender -> receive room ID
+//  1. Dial the transport as sender -> receive session ID
 //  2. Generate PAKE code (channel + words)
 //  3. Compose full rendezvous code: room_id-channel-word-word-word
 //  4. Notify caller with the code (via callback)
@@ -9,8 +9,13 @@
 //
 // Receiver flow:
 //  1. Parse full rendezvous code -> extract room ID and PAKE code
-//  2. Connect to relay as receiver with room ID
+//  2. Dial the transport as receiver with the session ID
 //  3. Perform Noise XXpsk0 handshake as responder; receive file
+//
+// The rendezvous layer is transport-agnostic: callers provide a
+// [transport.Dialer] which may be a [transport.RelayDialer],
+// [transport.DirectDialer], [transport.Selector], or any other
+// implementation of the Dialer interface.
 package rendezvous
 
 import (
@@ -37,22 +42,24 @@ type ReceiverResult struct {
 	Transfer engine.ReceiveResult
 }
 
-// Send executes the full sender flow.
+// Send executes the full sender flow using the provided transport dialer.
 //
-//   - relayURL: relay server URL (use DefaultRelayURL if empty)
+//   - dialer: transport implementation (relay, direct, or selector)
+//   - relayURL: relay server URL stored in the rendezvous code metadata
 //   - filename: name of the file to send
 //   - data: file contents
 //   - wordCount: number of words in the PAKE code (2-5)
-func Send(ctx context.Context, relayURL, filename string, data []byte, wordCount int) (SenderResult, error) {
-	return SendWithCodeCallback(ctx, relayURL, filename, data, wordCount, nil)
+func Send(ctx context.Context, dialer transport.Dialer, relayURL, filename string, data []byte, wordCount int) (SenderResult, error) {
+	return SendWithCodeCallback(ctx, dialer, relayURL, filename, data, wordCount, nil)
 }
 
 // SendWithCodeCallback executes the sender flow, calling onCode with the
 // full rendezvous code before waiting for the receiver. The callback runs
-// synchronously (the relay already holds the connection open) so the caller
-// can display the code to the user before the handshake begins.
+// synchronously (the transport already holds the connection open) so the
+// caller can display the code to the user before the handshake begins.
 func SendWithCodeCallback(
 	ctx context.Context,
+	dialer transport.Dialer,
 	relayURL, filename string,
 	data []byte,
 	wordCount int,
@@ -62,10 +69,10 @@ func SendWithCodeCallback(
 		relayURL = DefaultRelayURL
 	}
 
-	// Step 1: connect to relay, receive room ID.
-	roomID, rw, err := transport.ConnectAsSender(ctx, relayURL)
+	// Step 1: dial as sender, receive session ID (room ID for relay).
+	sessionID, rw, err := dialer.DialSender(ctx)
 	if err != nil {
-		return SenderResult{}, fmt.Errorf("connect to relay: %w", err)
+		return SenderResult{}, fmt.Errorf("dial sender: %w", err)
 	}
 
 	// Step 2: generate PAKE code.
@@ -75,7 +82,7 @@ func SendWithCodeCallback(
 	}
 
 	fullCode := code.FullRendezvousCode{
-		RoomID:   roomID,
+		RoomID:   sessionID,
 		PakeCode: pakeCode,
 		RelayURL: relayURL,
 	}
@@ -101,11 +108,12 @@ func SendWithCodeCallback(
 	return SenderResult{Code: fullCode, Transfer: result}, nil
 }
 
-// Receive executes the full receiver flow.
+// Receive executes the full receiver flow using the provided transport dialer.
 //
 //   - codeStr: the full rendezvous code from the sender
-//   - relayURL: relay server URL (use DefaultRelayURL if empty)
-func Receive(ctx context.Context, codeStr, relayURL string) (ReceiverResult, error) {
+//   - dialer: transport implementation (relay, direct, or selector)
+//   - relayURL: relay server URL for code parsing metadata
+func Receive(ctx context.Context, codeStr string, dialer transport.Dialer, relayURL string) (ReceiverResult, error) {
 	if relayURL == "" {
 		relayURL = DefaultRelayURL
 	}
@@ -116,10 +124,10 @@ func Receive(ctx context.Context, codeStr, relayURL string) (ReceiverResult, err
 		return ReceiverResult{}, fmt.Errorf("parse rendezvous code: %w", err)
 	}
 
-	// Step 2: connect to relay as receiver.
-	rw, err := transport.ConnectAsReceiver(ctx, fullCode.RelayURL, fullCode.RoomID)
+	// Step 2: dial as receiver with the session ID (room ID for relay).
+	rw, err := dialer.DialReceiver(ctx, fullCode.RoomID)
 	if err != nil {
-		return ReceiverResult{}, fmt.Errorf("connect to relay: %w", err)
+		return ReceiverResult{}, fmt.Errorf("dial receiver: %w", err)
 	}
 
 	// Step 3: Noise handshake as responder.

@@ -118,7 +118,7 @@ What exists:
 
 What is still missing:
 
-- direct-first transport selection
+- direct transport that actually works end-to-end (selector wiring is in place, but direct dialer is a stub)
 - resume support
 - directory transfer
 - transfer history
@@ -333,6 +333,7 @@ The client transport package (`client/internal/transport/`) has been refactored 
 - **`DirectDialer`** — stub implementation that opens a connected UDP socket to a remote address. Has clear TODO markers for NAT hole-punching integration and relay-coordinated signaling. Does not work end-to-end yet.
 - **`Selector`** — tries `DirectDialer` first (if a direct address is provided, with a short timeout), then falls back to `RelayDialer`. Currently the relay path is always used because no signaling provides a direct address yet.
 - **Tests** — compile-time interface conformance checks for all types, behavioral tests for the `Conn` interface, error-path tests for `DirectDialer`, and fallback-path tests for `Selector`. All existing `BuildWSURL` tests preserved.
+- **Rendezvous wiring** — `Send`, `SendWithCodeCallback`, and `Receive` now accept a `transport.Dialer` parameter. The CLI constructs a `Selector` and passes it through. The deprecated `ConnectAsSender`/`ConnectAsReceiver` package-level wrappers have been removed. Integration tests cover both `RelayDialer` and `Selector` (relay-fallback) paths end-to-end.
 
 Checklist:
 
@@ -341,10 +342,12 @@ Checklist:
 - [x] direct transport stub implementing `Dialer` over UDP
 - [x] transport selector with direct-first / relay-fallback logic
 - [x] test coverage for the abstraction layer
+- [x] rendezvous layer wired to `Dialer` interface; deprecated `ConnectAsSender`/`ConnectAsReceiver` wrappers removed
+- [x] CLI constructs a `Selector` dialer and passes it through the rendezvous flow
+- [x] integration tests cover both `RelayDialer` and `Selector` (relay-fallback) paths end-to-end
 - [ ] integrate `lib/punchthrough/` into direct transport for NAT hole-punching
 - [ ] add relay-coordinated signaling to exchange peer addresses
 - [ ] add reliability/framing layer over UDP for direct transport
-- [ ] update rendezvous layer to use `Dialer` interface instead of legacy wrappers
 - [ ] add deterministic verification for direct-path success and relay fallback
 
 Exit criteria:

@@ -168,22 +168,23 @@ Not yet in this layer:
 
 Owns:
 
-- sender/receiver session orchestration against the relay
-- room creation / room join flow
+- sender/receiver session orchestration using the `transport.Dialer` interface
+- room creation / room join flow (delegated to the dialer)
 - bridging transport + crypto + engine into the user flow
 
-This is the current happy-path integration layer for the client.
+This is the current happy-path integration layer for the client. It is transport-agnostic: callers supply a `Dialer`, which may be a `RelayDialer`, `Selector`, or any future implementation.
 
 #### `client/internal/transport`
 
 Owns:
 
-- relay WebSocket connection setup
-- adapting transport IO to what the crypto layer expects
+- transport abstraction: `Conn` (bidirectional byte stream) and `Dialer` (sender/receiver connection establishment)
+- `RelayDialer`: WebSocket relay transport
+- `DirectDialer`: stub UDP direct transport (not yet functional end-to-end)
+- `Selector`: tries direct first, falls back to relay
+- adapting transport IO to what the crypto and engine layers expect
 
-Near-term extension point:
-
-- direct transport can later sit beside the relay transport, with selection logic above it
+The CLI constructs a `Selector` dialer, which currently always falls back to relay because no signaling provides a direct address yet. When direct transport becomes viable, the `Selector` will automatically attempt it first.
 
 ---
 

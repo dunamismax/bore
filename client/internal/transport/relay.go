@@ -162,16 +162,4 @@ func BuildWSURL(relayURL, roomID string) (string, error) {
 	return u.String(), nil
 }
 
-// ConnectAsSender is a convenience wrapper for callers that don't use [Dialer].
-// Deprecated: prefer [RelayDialer.DialSender] for new code.
-func ConnectAsSender(ctx context.Context, relayURL string) (string, Conn, error) {
-	d := &RelayDialer{RelayURL: relayURL}
-	return d.DialSender(ctx)
-}
 
-// ConnectAsReceiver is a convenience wrapper for callers that don't use [Dialer].
-// Deprecated: prefer [RelayDialer.DialReceiver] for new code.
-func ConnectAsReceiver(ctx context.Context, relayURL, roomID string) (Conn, error) {
-	d := &RelayDialer{RelayURL: relayURL}
-	return d.DialReceiver(ctx, roomID)
-}

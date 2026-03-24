@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dunamismax/bore/client/internal/code"
+	"github.com/dunamismax/bore/client/internal/transport"
 	"nhooyr.io/websocket"
 )
 
@@ -231,8 +232,12 @@ func TestSendReceiveViaRelay(t *testing.T) {
 		err    error
 	}, 1)
 
+	// Both sender and receiver use the Dialer interface via RelayDialer.
+	senderDialer := &transport.RelayDialer{RelayURL: relay.URL()}
+	receiverDialer := &transport.RelayDialer{RelayURL: relay.URL()}
+
 	go func() {
-		result, err := SendWithCodeCallback(ctx, relay.URL(), "payload.txt", payload, code.DefaultWords, func(full code.FullRendezvousCode) {
+		result, err := SendWithCodeCallback(ctx, senderDialer, relay.URL(), "payload.txt", payload, code.DefaultWords, func(full code.FullRendezvousCode) {
 			codeCh <- full
 		})
 		senderDone <- struct {
@@ -248,7 +253,7 @@ func TestSendReceiveViaRelay(t *testing.T) {
 		t.Fatalf("timed out waiting for sender code: %v", ctx.Err())
 	}
 
-	recvResult, err := Receive(ctx, fullCode.CodeString(), relay.URL())
+	recvResult, err := Receive(ctx, fullCode.CodeString(), receiverDialer, relay.URL())
 	if err != nil {
 		t.Fatalf("Receive: %v", err)
 	}
@@ -280,5 +285,67 @@ func TestSendReceiveViaRelay(t *testing.T) {
 	}
 	if sender.result.Transfer.Size != recvResult.Transfer.Size {
 		t.Fatalf("size mismatch: sender=%d receiver=%d", sender.result.Transfer.Size, recvResult.Transfer.Size)
+	}
+}
+
+func TestSendReceiveViaSelector(t *testing.T) {
+	relay := newRelayTestServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	payload := []byte("selector integration test payload")
+	codeCh := make(chan code.FullRendezvousCode, 1)
+	senderDone := make(chan struct {
+		result SenderResult
+		err    error
+	}, 1)
+
+	// Use Selector with no direct address -- should fall back to relay.
+	senderDialer := &transport.Selector{RelayURL: relay.URL()}
+	receiverDialer := &transport.Selector{RelayURL: relay.URL()}
+
+	go func() {
+		result, err := SendWithCodeCallback(ctx, senderDialer, relay.URL(), "selector.txt", payload, code.DefaultWords, func(full code.FullRendezvousCode) {
+			codeCh <- full
+		})
+		senderDone <- struct {
+			result SenderResult
+			err    error
+		}{result: result, err: err}
+	}()
+
+	var fullCode code.FullRendezvousCode
+	select {
+	case fullCode = <-codeCh:
+	case <-ctx.Done():
+		t.Fatalf("timed out waiting for sender code: %v", ctx.Err())
+	}
+
+	recvResult, err := Receive(ctx, fullCode.CodeString(), receiverDialer, relay.URL())
+	if err != nil {
+		t.Fatalf("Receive: %v", err)
+	}
+
+	var sender struct {
+		result SenderResult
+		err    error
+	}
+	select {
+	case sender = <-senderDone:
+	case <-ctx.Done():
+		t.Fatalf("timed out waiting for sender result: %v", ctx.Err())
+	}
+	if sender.err != nil {
+		t.Fatalf("SendWithCodeCallback: %v", sender.err)
+	}
+
+	if recvResult.Transfer.Filename != "selector.txt" {
+		t.Fatalf("received filename = %q, want selector.txt", recvResult.Transfer.Filename)
+	}
+	if string(recvResult.Transfer.Data) != string(payload) {
+		t.Fatalf("received data mismatch")
+	}
+	if sender.result.Transfer.SHA256 != recvResult.Transfer.SHA256 {
+		t.Fatal("sender and receiver SHA-256 hashes differ")
 	}
 }
