@@ -145,7 +145,7 @@ This means the relay should be treated as functional but not yet production-hard
 
 ### Browser surface is intentionally thin
 
-The new web layer is intentionally read-only. It does not add auth, persistent operator state, or mutation endpoints. Treat it as a convenience view over aggregate relay state, not a security boundary or control plane. If Bore later adds local durable operator state or resumable-transfer metadata, start with a small relational SQLite store by default and only graduate to PostgreSQL if the product clearly earns that complexity.
+The new web layer is intentionally read-only. It does not add auth, persistent operator state, or mutation endpoints. Treat it as a convenience view over aggregate relay state, not a security boundary or control plane. If Bore later adds local durable operator state or resumable-transfer metadata, start with a small relational SQLite store by default.
 
 ### Direct transport is not active yet
 

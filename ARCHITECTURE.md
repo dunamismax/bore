@@ -370,7 +370,6 @@ If Bore later needs local durable state, the default path is:
 2. start with **SQLite**
 3. use **Drizzle** only if the browser surface genuinely becomes a write-owning web app
 4. keep Go-side queries plain SQL first, with **`sqlc`** only if backend complexity earns it
-5. move to **PostgreSQL** only when Bore clearly outgrows SQLite because it has become a real multi-node/networked control plane
 
 What Bore should avoid:
 

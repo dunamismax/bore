@@ -72,7 +72,6 @@ Doctrine for future work:
 - if Bore later needs local persistence, start with **SQLite** and a **relational** schema
 - if the browser surface later earns authenticated write-heavy workflows, use **Drizzle** on the web side
 - if heavier Go-owned backend workflows later earn a richer query layer, use plain SQL first and add **`sqlc`** only when the query surface clearly justifies it
-- move to **PostgreSQL** only if Bore becomes a real multi-node/networked control plane with concurrency or operational demands SQLite cannot carry cleanly
 - do **not** invent a MongoDB/document-store pivot for relay history, resume metadata, or operator state
 
 ---
