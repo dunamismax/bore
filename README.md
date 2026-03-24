@@ -19,27 +19,33 @@ Current truth:
 - binaries live under `cmd/`: `bore`, `relay`, `bore-admin`, and `punchthrough`
 - shared Go packages live under `internal/`: `client`, `relay`, and `punchthrough`
 - the browser surface lives in `web/`
-- the verified transfer path is relay-based, not direct peer-to-peer
+- the verified transfer path is relay-based with resumable single-file transfers
+- direct-path transport is implemented (STUN discovery, signaling, hole-punching, reliability framing) but pending real-world NAT validation; relay remains the default
+- the relay is hardened with per-IP rate limiting, HTTP timeouts, operational metrics, and deployment packaging
 
 ## What Ships Today
 
 - `bore send` and `bore receive` for relay-based encrypted file transfer
+- resumable single-file transfers with on-disk checkpoint state
 - rendezvous code generation and parsing
 - Noise `XXpsk0` handshake bound to the rendezvous code
 - ChaCha20-Poly1305 encrypted transfer channel
 - SHA-256 file integrity verification
-- self-hostable WebSocket relay with `/healthz` and `/status`
+- self-hostable WebSocket relay with `/healthz`, `/status`, and `/metrics`
+- per-IP rate limiting on relay `/ws` and `/signal` endpoints
+- explicit HTTP server timeouts (read, write, idle, header)
 - embedded relay-served web UI at `/` and `/ops/relay`
 - `bore-admin status` relay polling
-- standalone NAT probing and hole-punching groundwork in `internal/punchthrough/`
+- deployment packaging (Dockerfile, systemd service unit)
+- STUN/NAT discovery, relay-coordinated signaling, and UDP hole-punching integrated into the client transport selector
+- `--direct` CLI flag on both `bore send` and `bore receive` for opt-in direct-path attempts
+- standalone `punchthrough` CLI for NAT probing
 
 ## Roadmap
 
-- direct transport wired into the client path
-- resumable transfers
+- end-to-end direct transfer verified across real NATs (implementation complete, pending real-world validation)
 - directory transfer
-- relay rate limiting and metrics
-- broader operator tooling beyond status snapshots
+- broader operator tooling beyond status snapshots and metrics
 - broader security hardening and external review
 
 ## Components
@@ -49,19 +55,20 @@ Current truth:
 | `bore` client | `cmd/bore`, `internal/client/` | active | Rendezvous, handshake, encrypted transfer, CLI |
 | `relay` | `cmd/relay`, `internal/relay/` | active | WebSocket room broker, `/healthz`, `/status`, and static web UI serving |
 | `web` | `web/` | active | React + Vite SPA for product story and live relay ops page |
-| `punchthrough` | `cmd/punchthrough`, `internal/punchthrough/` | active but not integrated | NAT probing and UDP hole-punching primitives |
+| `punchthrough` | `cmd/punchthrough`, `internal/punchthrough/` | active, integrated into client transport selector | NAT probing, STUN discovery, and UDP hole-punching |
 | `bore-admin` | `cmd/bore-admin` | active | Minimal operator CLI for relay health and status polling |
 
 ## Data layer stance
 
-Bore's shipped path does not need a durable database today.
+Bore's relay path does not need a durable database today.
 
 - `internal/relay/room` keeps live room state in memory only.
 - `web/` is a read-only browser surface that fetches the relay's live `/status` snapshot.
 - `bore-admin` is a stateless CLI over that same `/status` endpoint.
-- resumable transfers, transfer history, and persisted operator history are not implemented yet.
+- resumable transfer checkpoint state is persisted as JSON on the receiver's filesystem (not in a database).
+- transfer history and persisted operator history are not implemented yet.
 
-If Bore later earns local persistence for resume metadata, relay observations, or operator history, start with a small relational SQLite store. If the browser surface ever grows into authenticated write-heavy workflows, keep it on SQLite with handwritten SQL migrations and queries.
+If Bore later earns local persistence for relay observations or operator history, start with a small relational SQLite store. If the browser surface ever grows into authenticated write-heavy workflows, keep it on SQLite with handwritten SQL migrations and queries.
 
 ## Quick start
 
@@ -182,6 +189,8 @@ go build ./cmd/bore-admin
 │   │   ├── punch/
 │   │   └── stun/
 │   └── relay/
+│       ├── metrics/
+│       ├── ratelimit/
 │       ├── room/
 │       ├── transport/
 │       └── webui/
@@ -196,9 +205,8 @@ go build ./cmd/bore-admin
 
 - keep the relay-based path stable and honest
 - keep the web surface narrow, read-only, and same-origin with the relay
-- integrate `internal/punchthrough/` into transport selection
-- add resumable transfer state
-- harden relay operations and observability
+- validate direct transport across real-world NAT configurations
+- add directory transfer after single-file resume semantics are proven
 - deepen operator tooling only where it solves real relay problems
 
 ## Notes
@@ -206,7 +214,7 @@ go build ./cmd/bore-admin
 - The rendezvous code is a cryptographic input to the handshake, not just a routing token.
 - The relay brokers connections and forwards encrypted bytes; it should stay payload-blind.
 - The root web surface is a product and operator layer over Bore's existing runtime, not a replacement for the CLI or transfer engine.
-- The codebase currently ships one reliable transfer path. Treat direct transport as planned work until it is integrated and verified.
+- The codebase ships a reliable relay-based transfer path with resumable single-file transfers. Direct transport is implemented and integrated but pending real-world NAT validation; relay remains the default.
 - If docs and code disagree, the docs are stale. Fix both in the same change.
 
 For the execution manual and current TODO lane, start with [`BUILD.md`](BUILD.md).
