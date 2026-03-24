@@ -1,6 +1,6 @@
 # bore
 
-Privacy-first file transfer with a real browser surface and a payload-blind relay.
+**Privacy-first file transfer with a real browser surface and a payload-blind relay.**
 
 bore moves a file between two machines with a short human-readable rendezvous code. The verified transfer path today is relay-based: the relay pairs peers and forwards encrypted bytes, while the file data stays end-to-end encrypted between sender and receiver.
 
@@ -19,7 +19,7 @@ Current truth:
 - the browser surface lives in `web/`
 - the verified transfer path is relay-based, not direct peer-to-peer
 
-## What works today
+## What Ships Today
 
 - `bore send` and `bore receive` for relay-based encrypted file transfer
 - rendezvous code generation and parsing
@@ -31,7 +31,7 @@ Current truth:
 - `bore-admin status` relay polling
 - standalone NAT probing and hole-punching groundwork in `internal/punchthrough/`
 
-## What is still next
+## Roadmap
 
 - direct transport wired into the client path
 - resumable transfers
@@ -160,7 +160,7 @@ go test ./cmd/bore-admin
 go build ./cmd/bore-admin
 ```
 
-## Repository layout
+## Repository Layout
 
 ```text
 .
