@@ -178,9 +178,11 @@ Owns:
 - `RelayDialer`: WebSocket relay transport
 - `DirectDialer`: stub UDP direct transport
 - `Selector`: tries direct first, falls back to relay
+- `SelectionResult`: records which transport was used and why, including `Method`, `FallbackReason`, and `DirectErr`
+- `Candidate` and `CandidatePair`: peer address and NAT type exchange types for relay-coordinated direct-path signaling
 - adapting transport IO to what the crypto and engine layers expect
 
-The CLI constructs a `Selector` dialer, which currently always falls back to relay because no signaling provides a direct address yet. When direct transport becomes viable, the `Selector` should automatically attempt it first.
+The CLI constructs a `Selector` dialer, which currently always falls back to relay because no signaling provides a direct address yet. After each dial, `Selector.LastSelection` records the transport decision and fallback reason. When direct transport becomes viable, the `Selector` should automatically attempt it first using `Candidate` data exchanged through the relay signaling channel.
 
 ---
 

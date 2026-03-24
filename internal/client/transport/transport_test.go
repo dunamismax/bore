@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"testing"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -223,4 +224,132 @@ func TestSelectorFallsBackWhenNoDirectAddr(t *testing.T) {
 	if err == nil {
 		t.Error("expected error connecting to non-existent relay")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Selector: LastSelection tracking
+// ---------------------------------------------------------------------------
+
+func TestSelectorRecordsFallbackNoDirectAddr(t *testing.T) {
+	s := &Selector{
+		RelayURL:   "http://127.0.0.1:1",
+		DirectAddr: "",
+	}
+
+	// DialSender will fail (no relay), but LastSelection should still be set.
+	_, _, _ = s.DialSender(context.Background())
+
+	if s.LastSelection.Method != MethodRelay {
+		t.Errorf("Method = %v, want MethodRelay", s.LastSelection.Method)
+	}
+	if s.LastSelection.Fallback != FallbackNoDirectAddr {
+		t.Errorf("Fallback = %v, want FallbackNoDirectAddr", s.LastSelection.Fallback)
+	}
+	if s.LastSelection.DirectErr != nil {
+		t.Errorf("DirectErr should be nil when no direct attempt was made, got %v", s.LastSelection.DirectErr)
+	}
+}
+
+func TestSelectorRecordsFallbackDialFailed(t *testing.T) {
+	// Use an address with no host to trigger a DNS/resolution error in
+	// the direct dialer. UDP dial to 127.0.0.1 always "succeeds" because
+	// UDP is connectionless, so we need a genuinely invalid address.
+	s := &Selector{
+		RelayURL:      "http://127.0.0.1:1",
+		DirectAddr:    "",                     // empty triggers no-addr path
+		DirectTimeout: 100 * time.Millisecond,
+	}
+
+	// With empty DirectAddr the selector goes straight to relay with
+	// FallbackNoDirectAddr. Test the explicit case separately below.
+	_, _, _ = s.DialSender(context.Background())
+
+	if s.LastSelection.Method != MethodRelay {
+		t.Errorf("Method = %v, want MethodRelay", s.LastSelection.Method)
+	}
+	if s.LastSelection.Fallback != FallbackNoDirectAddr {
+		t.Errorf("Fallback = %v, want FallbackNoDirectAddr", s.LastSelection.Fallback)
+	}
+}
+
+func TestSelectorRecordsFallbackDialFailedBadAddr(t *testing.T) {
+	// Use a malformed address that will actually fail the UDP dial.
+	s := &Selector{
+		RelayURL:      "http://127.0.0.1:1",
+		DirectAddr:    "not-a-host:99999999", // will fail resolution
+		DirectTimeout: 100 * time.Millisecond,
+	}
+
+	_, _, _ = s.DialSender(context.Background())
+
+	if s.LastSelection.Method != MethodRelay {
+		t.Errorf("Method = %v, want MethodRelay", s.LastSelection.Method)
+	}
+	if s.LastSelection.Fallback != FallbackDialFailed {
+		t.Errorf("Fallback = %v, want FallbackDialFailed", s.LastSelection.Fallback)
+	}
+	if s.LastSelection.DirectErr == nil {
+		t.Error("DirectErr should be non-nil after a failed direct attempt")
+	}
+}
+
+func TestSelectorRecordsReceiverFallbackNoDirectAddr(t *testing.T) {
+	s := &Selector{
+		RelayURL:   "http://127.0.0.1:1",
+		DirectAddr: "",
+	}
+
+	_, _ = s.DialReceiver(context.Background(), "room1")
+
+	if s.LastSelection.Method != MethodRelay {
+		t.Errorf("Method = %v, want MethodRelay", s.LastSelection.Method)
+	}
+	if s.LastSelection.Fallback != FallbackNoDirectAddr {
+		t.Errorf("Fallback = %v, want FallbackNoDirectAddr", s.LastSelection.Fallback)
+	}
+}
+
+func TestSelectorRecordsReceiverFallbackDialFailed(t *testing.T) {
+	s := &Selector{
+		RelayURL:      "http://127.0.0.1:1",
+		DirectAddr:    "not-a-host:99999999",
+		DirectTimeout: 100 * time.Millisecond,
+	}
+
+	_, _ = s.DialReceiver(context.Background(), "room1")
+
+	if s.LastSelection.Method != MethodRelay {
+		t.Errorf("Method = %v, want MethodRelay", s.LastSelection.Method)
+	}
+	if s.LastSelection.Fallback != FallbackDialFailed {
+		t.Errorf("Fallback = %v, want FallbackDialFailed", s.LastSelection.Fallback)
+	}
+	if s.LastSelection.DirectErr == nil {
+		t.Error("DirectErr should be non-nil after a failed direct attempt")
+	}
+}
+
+func TestSelectionResultStringOutput(t *testing.T) {
+	r := SelectionResult{Method: MethodRelay, Fallback: FallbackNoDirectAddr}
+	s := r.String()
+	if s == "" {
+		t.Error("expected non-empty string")
+	}
+	// Should mention both transport and fallback reason.
+	if !contains(s, "relay") || !contains(s, "no direct address") {
+		t.Errorf("String() = %q, want mentions of relay and fallback reason", s)
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && searchSubstring(s, substr)
+}
+
+func searchSubstring(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
 }

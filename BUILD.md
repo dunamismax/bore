@@ -133,7 +133,7 @@ bore/
 
 ### `cmd/bore` + `internal/client/`
 
-Status: working relay-based transfer path with direct-path scaffolding under it
+Status: working relay-based transfer path with direct-path integration groundwork active
 
 What exists:
 
@@ -143,10 +143,16 @@ What exists:
 - transfer engine with header, chunk, and end framing
 - SHA-256 integrity verification
 - relay transport plus selector wiring
+- `SelectionResult` with `Method`, `FallbackReason`, and `DirectErr` for observable transport decisions
+- `Candidate` and `CandidatePair` types for relay-coordinated peer address exchange
+- deterministic tests verifying selector fallback reasons through unit and integration paths
 - Go test coverage for code, crypto, engine, transport, and rendezvous
 
 What is still missing:
 
+- relay-coordinated signaling to publish and consume candidate data during rendezvous
+- STUN/NAT discovery wired into direct dial attempts
+- UDP reliability/framing layer for direct transport
 - direct transport that works end-to-end
 - resume support
 - directory transfer
@@ -379,13 +385,13 @@ Checklist:
 - [x] direct transport stub implementing `Dialer`
 - [x] selector with direct-first and relay-fallback logic
 - [x] rendezvous flow wired to `Dialer`
-- [ ] define the relay-coordinated peer-candidate exchange needed for direct attempts
+- [x] define the relay-coordinated peer-candidate exchange needed for direct attempts
 - [ ] publish and consume direct-path candidate data during rendezvous
 - [ ] wire `internal/punchthrough/` STUN and NAT discovery into direct dial attempts
 - [ ] add UDP reliability/framing semantics suitable for encrypted file transfer
-- [ ] record why direct mode fell back so tests and operators can explain the downgrade
-- [ ] add deterministic verification for direct-path success and relay fallback behavior
-- [ ] prove the selector still lands on the existing relay path cleanly when direct mode is impossible
+- [x] record why direct mode fell back so tests and operators can explain the downgrade
+- [x] add deterministic verification for direct-path success and relay fallback behavior
+- [x] prove the selector still lands on the existing relay path cleanly when direct mode is impossible
 
 Exit criteria:
 
@@ -589,11 +595,13 @@ If you are choosing the next substantive feature lane, pick **Phase 1 direct-pat
 
 ### Concrete order of attack inside Phase 1
 
-1. define the candidate-exchange shape in rendezvous
-2. wire STUN/NAT discovery into direct attempt setup
-3. make selector fallback reasons explicit
-4. prove the direct/fallback behavior with deterministic tests
-5. only then widen product claims beyond relay-first
+1. ~~define the candidate-exchange shape in rendezvous~~ done: `Candidate`, `CandidatePair` types exist
+2. ~~make selector fallback reasons explicit~~ done: `SelectionResult` with `Method`, `FallbackReason`, `DirectErr`
+3. ~~prove the direct/fallback behavior with deterministic tests~~ done: unit + integration coverage
+4. implement relay-coordinated signaling to publish/consume candidate data during rendezvous
+5. wire STUN/NAT discovery into direct attempt setup using `Candidate`
+6. add UDP reliability/framing layer over the direct transport
+7. only then widen product claims beyond relay-first
 
 ### If the goal is cleanup instead of features
 

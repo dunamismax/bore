@@ -349,3 +349,55 @@ func TestSendReceiveViaSelector(t *testing.T) {
 		t.Fatal("sender and receiver SHA-256 hashes differ")
 	}
 }
+
+func TestSelectorFallbackReasonThroughRelay(t *testing.T) {
+	// Verify that when the selector falls back to relay, the fallback reason
+	// is observable after a successful end-to-end transfer.
+	relay := newRelayTestServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	payload := []byte("fallback reason integration test")
+	codeCh := make(chan code.FullRendezvousCode, 1)
+	senderDone := make(chan error, 1)
+
+	senderDialer := &transport.Selector{RelayURL: relay.URL()}
+	receiverDialer := &transport.Selector{RelayURL: relay.URL()}
+
+	go func() {
+		_, err := SendWithCodeCallback(ctx, senderDialer, relay.URL(), "fallback.txt", payload, code.DefaultWords, func(full code.FullRendezvousCode) {
+			codeCh <- full
+		})
+		senderDone <- err
+	}()
+
+	var fullCode code.FullRendezvousCode
+	select {
+	case fullCode = <-codeCh:
+	case <-ctx.Done():
+		t.Fatalf("timed out waiting for sender code: %v", ctx.Err())
+	}
+
+	_, err := Receive(ctx, fullCode.CodeString(), receiverDialer, relay.URL())
+	if err != nil {
+		t.Fatalf("Receive: %v", err)
+	}
+
+	if err := <-senderDone; err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	// Both dialers should have fallen back to relay with FallbackNoDirectAddr.
+	if senderDialer.LastSelection.Method != transport.MethodRelay {
+		t.Errorf("sender Method = %v, want MethodRelay", senderDialer.LastSelection.Method)
+	}
+	if senderDialer.LastSelection.Fallback != transport.FallbackNoDirectAddr {
+		t.Errorf("sender Fallback = %v, want FallbackNoDirectAddr", senderDialer.LastSelection.Fallback)
+	}
+	if receiverDialer.LastSelection.Method != transport.MethodRelay {
+		t.Errorf("receiver Method = %v, want MethodRelay", receiverDialer.LastSelection.Method)
+	}
+	if receiverDialer.LastSelection.Fallback != transport.FallbackNoDirectAddr {
+		t.Errorf("receiver Fallback = %v, want FallbackNoDirectAddr", receiverDialer.LastSelection.Fallback)
+	}
+}
