@@ -1,158 +1,48 @@
-// Package transport implements the WebSocket transport for bore.
+// Package transport defines the transport abstraction for bore and provides
+// concrete implementations for relay-based and (future) direct peer-to-peer
+// connections.
 //
-// The relay protocol:
-//   - Sender connects to ws://relay/ws (no query params), relay sends room ID as
-//     the first text message.
-//   - Receiver connects to ws://relay/ws?room=ROOM_ID, relay pairs them.
-//   - After pairing, the relay forwards WebSocket frames bidirectionally
-//     (zero-knowledge: the relay never sees plaintext).
+// The core abstraction is [Conn] + [Dialer]:
 //
-// wsConn bridges the message-oriented WebSocket protocol to the byte-stream
-// io.ReadWriter interface expected by the Noise handshake and SecureChannel.
-// Each Write sends one binary WebSocket message; Read buffers incoming messages
-// and serves bytes on demand.
+//   - Conn is a bidirectional byte stream (io.ReadWriteCloser) between two peers.
+//   - Dialer establishes a Conn for either the sender or receiver role.
+//
+// Concrete implementations:
+//
+//   - [RelayDialer]  — WebSocket transport through a bore relay server.
+//   - [DirectDialer] — UDP transport for direct peer-to-peer (stub, not yet functional).
+//   - [Selector]     — tries direct first, falls back to relay.
 package transport
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"net/url"
-
-	"nhooyr.io/websocket"
 )
 
-const maxMessageBytes = 64 * 1024 * 1024 // 64 MB
-
-// wsConn adapts a *websocket.Conn to io.ReadWriter.
-// Each Write becomes a single binary WebSocket message.
-// Read buffers incoming messages and serves bytes.
-type wsConn struct {
-	conn *websocket.Conn
-	ctx  context.Context
-	buf  []byte // unread bytes from the most recently received message
-	pos  int    // current read position in buf
-}
-
-// Read implements io.Reader.
-// Drains the internal buffer first; if empty, receives the next WebSocket message.
-func (c *wsConn) Read(p []byte) (int, error) {
-	for c.pos >= len(c.buf) {
-		_, data, err := c.conn.Read(c.ctx)
-		if err != nil {
-			return 0, err
-		}
-		if len(data) == 0 {
-			continue // skip empty messages, loop for next
-		}
-		c.buf = data
-		c.pos = 0
-	}
-	n := copy(p, c.buf[c.pos:])
-	c.pos += n
-	return n, nil
-}
-
-// Write implements io.Writer.
-// Sends p as a single binary WebSocket message.
-func (c *wsConn) Write(p []byte) (int, error) {
-	if err := c.conn.Write(c.ctx, websocket.MessageBinary, p); err != nil {
-		return 0, fmt.Errorf("websocket write: %w", err)
-	}
-	return len(p), nil
-}
-
-// BuildWSURL converts a relay HTTP(S) URL to a WebSocket URL and optionally
-// appends a room query parameter.
+// Conn is a bidirectional byte-stream connection between two peers.
 //
-// Conversions:
-//
-//	http://  ->  ws://
-//	https:// ->  wss://
-//	ws://    ->  ws://    (pass-through)
-//	wss://   ->  wss://   (pass-through)
-//
-// Always appends "/ws" path. Appends "?room=roomID" if roomID is non-empty.
-func BuildWSURL(relayURL, roomID string) (string, error) {
-	u, err := url.Parse(relayURL)
-	if err != nil {
-		return "", fmt.Errorf("parse relay URL: %w", err)
-	}
-	if u.Host == "" {
-		return "", fmt.Errorf("relay URL has no host: %q", relayURL)
-	}
-
-	switch u.Scheme {
-	case "http", "ws":
-		u.Scheme = "ws"
-	case "https", "wss":
-		u.Scheme = "wss"
-	default:
-		return "", fmt.Errorf("unsupported relay URL scheme: %q", u.Scheme)
-	}
-
-	u.Path = "/ws"
-
-	if roomID != "" {
-		q := url.Values{}
-		q.Set("room", roomID)
-		u.RawQuery = q.Encode()
-	} else {
-		u.RawQuery = ""
-	}
-
-	return u.String(), nil
+// Both the Noise handshake and the transfer engine operate over Conn
+// without knowledge of the underlying transport mechanism.
+type Conn interface {
+	io.ReadWriteCloser
 }
 
-// ConnectAsSender connects to the relay as a sender.
+// Dialer establishes transport connections for sender and receiver roles.
 //
-// Creates a new room on the relay. The relay sends the room ID as the first
-// text message after the WebSocket connection is established.
-// Returns the room ID and an io.ReadWriter backed by the WebSocket connection.
-func ConnectAsSender(ctx context.Context, relayURL string) (string, io.ReadWriter, error) {
-	wsURL, err := BuildWSURL(relayURL, "")
-	if err != nil {
-		return "", nil, fmt.Errorf("build sender URL: %w", err)
-	}
+// Each transport implementation (relay, direct, selector) implements Dialer
+// so the rendezvous layer can be transport-agnostic.
+type Dialer interface {
+	// DialSender establishes a connection as the sending peer.
+	//
+	// For relay transports, sessionID is the room ID assigned by the relay.
+	// For direct transports, sessionID is empty (the caller should not
+	// rely on it for non-relay transports).
+	DialSender(ctx context.Context) (sessionID string, conn Conn, err error)
 
-	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
-		CompressionMode: websocket.CompressionDisabled,
-	})
-	if err != nil {
-		return "", nil, fmt.Errorf("connect to relay: %w", err)
-	}
-	conn.SetReadLimit(maxMessageBytes)
-
-	// The relay sends the room ID as the first text message.
-	msgType, data, err := conn.Read(ctx)
-	if err != nil {
-		conn.Close(websocket.StatusInternalError, "read room ID failed")
-		return "", nil, fmt.Errorf("read room ID: %w", err)
-	}
-	if msgType != websocket.MessageText {
-		conn.Close(websocket.StatusUnsupportedData, "expected text room ID")
-		return "", nil, fmt.Errorf("expected text room ID message, got type %v", msgType)
-	}
-
-	roomID := string(data)
-	return roomID, &wsConn{conn: conn, ctx: ctx}, nil
-}
-
-// ConnectAsReceiver connects to the relay as a receiver, joining an existing room.
-// Returns an io.ReadWriter backed by the WebSocket connection.
-func ConnectAsReceiver(ctx context.Context, relayURL, roomID string) (io.ReadWriter, error) {
-	wsURL, err := BuildWSURL(relayURL, roomID)
-	if err != nil {
-		return nil, fmt.Errorf("build receiver URL: %w", err)
-	}
-
-	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
-		CompressionMode: websocket.CompressionDisabled,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("connect to relay: %w", err)
-	}
-	conn.SetReadLimit(maxMessageBytes)
-
-	return &wsConn{conn: conn, ctx: ctx}, nil
+	// DialReceiver establishes a connection as the receiving peer,
+	// joining the session identified by sessionID.
+	//
+	// For relay transports, sessionID is the room ID.
+	// For direct transports, sessionID may be ignored.
+	DialReceiver(ctx context.Context, sessionID string) (Conn, error)
 }

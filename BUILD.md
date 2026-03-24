@@ -321,13 +321,30 @@ Checklist:
 
 ### Phase 1 — direct-path integration
 
-**Status:** planned
+**Status:** in progress
+
+#### What has been implemented (transport abstraction layer)
+
+The client transport package (`client/internal/transport/`) has been refactored from package-level functions into a clean interface-based abstraction:
+
+- **`Conn` interface** — `io.ReadWriteCloser` that the crypto and engine layers consume without knowing the underlying transport.
+- **`Dialer` interface** — `DialSender(ctx) (sessionID, Conn, error)` and `DialReceiver(ctx, sessionID) (Conn, error)` that each transport implements.
+- **`RelayDialer`** — the existing WebSocket relay transport, refactored to implement `Dialer`. All existing relay behavior is preserved. Legacy `ConnectAsSender`/`ConnectAsReceiver` package-level functions are kept as deprecated wrappers for backward compatibility.
+- **`DirectDialer`** — stub implementation that opens a connected UDP socket to a remote address. Has clear TODO markers for NAT hole-punching integration and relay-coordinated signaling. Does not work end-to-end yet.
+- **`Selector`** — tries `DirectDialer` first (if a direct address is provided, with a short timeout), then falls back to `RelayDialer`. Currently the relay path is always used because no signaling provides a direct address yet.
+- **Tests** — compile-time interface conformance checks for all types, behavioral tests for the `Conn` interface, error-path tests for `DirectDialer`, and fallback-path tests for `Selector`. All existing `BuildWSURL` tests preserved.
 
 Checklist:
 
-- [ ] integrate `lib/punchthrough/` into client transport selection
-- [ ] add coordination/signaling needed to attempt direct paths safely
-- [ ] keep relay fallback as the reliable default path
+- [x] transport abstraction layer with `Conn` and `Dialer` interfaces
+- [x] relay transport refactored to implement `Dialer`
+- [x] direct transport stub implementing `Dialer` over UDP
+- [x] transport selector with direct-first / relay-fallback logic
+- [x] test coverage for the abstraction layer
+- [ ] integrate `lib/punchthrough/` into direct transport for NAT hole-punching
+- [ ] add relay-coordinated signaling to exchange peer addresses
+- [ ] add reliability/framing layer over UDP for direct transport
+- [ ] update rendezvous layer to use `Dialer` interface instead of legacy wrappers
 - [ ] add deterministic verification for direct-path success and relay fallback
 
 Exit criteria:
