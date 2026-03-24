@@ -216,17 +216,25 @@ type healthResponse struct {
 }
 
 type statusResponse struct {
-	Service       string       `json:"service"`
-	Status        string       `json:"status"`
-	UptimeSeconds int64        `json:"uptimeSeconds"`
-	Rooms         statusRooms  `json:"rooms"`
-	Limits        statusLimits `json:"limits"`
+	Service       string          `json:"service"`
+	Status        string          `json:"status"`
+	UptimeSeconds int64           `json:"uptimeSeconds"`
+	Rooms         statusRooms     `json:"rooms"`
+	Limits        statusLimits    `json:"limits"`
+	Transport     statusTransport `json:"transport"`
 }
 
 type statusRooms struct {
 	Total   int `json:"total"`
 	Waiting int `json:"waiting"`
 	Active  int `json:"active"`
+}
+
+type statusTransport struct {
+	SignalExchanges int64 `json:"signalExchanges"`
+	RoomsRelayed    int64 `json:"roomsRelayed"`
+	BytesRelayed    int64 `json:"bytesRelayed"`
+	FramesRelayed   int64 `json:"framesRelayed"`
 }
 
 type statusLimits struct {
@@ -245,6 +253,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	snapshot := s.registry.Snapshot()
+	msnap := s.counters.Snapshot()
 
 	writeJSON(w, http.StatusOK, statusResponse{
 		Service:       "bore-relay",
@@ -260,6 +269,12 @@ func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 			RoomTTLSeconds:      int64(snapshot.RoomTTL.Seconds()),
 			ReapIntervalSeconds: int64(snapshot.ReapInterval.Seconds()),
 			MaxMessageSizeBytes: maxMessageSize,
+		},
+		Transport: statusTransport{
+			SignalExchanges: msnap.SignalExchanges,
+			RoomsRelayed:    msnap.RoomsRelayed,
+			BytesRelayed:    msnap.BytesRelayed,
+			FramesRelayed:   msnap.FramesRelayed,
 		},
 	})
 }

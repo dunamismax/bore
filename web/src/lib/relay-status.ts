@@ -15,6 +15,12 @@ export const relayStatusSchema = z.object({
     reapIntervalSeconds: z.number(),
     maxMessageSizeBytes: z.number(),
   }),
+  transport: z.object({
+    signalExchanges: z.number(),
+    roomsRelayed: z.number(),
+    bytesRelayed: z.number(),
+    framesRelayed: z.number(),
+  }),
 });
 
 export type RelayStatus = z.infer<typeof relayStatusSchema>;

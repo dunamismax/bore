@@ -86,6 +86,11 @@ func TestRelay_StatusEndpoints(t *testing.T) {
 	if status.Limits.MaxMessageSizeBytes != maxMessageSize {
 		t.Fatalf("max message size = %d, want %d", status.Limits.MaxMessageSizeBytes, maxMessageSize)
 	}
+	// Transport stats should exist and be zero at startup.
+	if status.Transport.SignalExchanges != 0 || status.Transport.RoomsRelayed != 0 ||
+		status.Transport.BytesRelayed != 0 || status.Transport.FramesRelayed != 0 {
+		t.Fatalf("empty relay transport = %+v, want all zeros", status.Transport)
+	}
 
 	sender, _ := dialSender(t, ctx, ts)
 	defer sender.CloseNow()
@@ -575,6 +580,42 @@ func TestRelay_StreamingReaderWriter(t *testing.T) {
 	want := bytes.Repeat([]byte("chunk"), 100)
 	if !bytes.Equal(data, want) {
 		t.Fatalf("streaming relay: got %d bytes, want %d", len(data), len(want))
+	}
+}
+
+func TestRelay_TransportStatsAfterRelay(t *testing.T) {
+	_, ts := testServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	sender, roomID := dialSender(t, ctx, ts)
+	defer sender.CloseNow()
+	receiver := dialReceiver(t, ctx, ts, roomID)
+	defer receiver.CloseNow()
+
+	// Exchange one frame through the relay.
+	payload := []byte("transport-stats-test")
+	if err := sender.Write(ctx, websocket.MessageBinary, payload); err != nil {
+		t.Fatalf("sender write: %v", err)
+	}
+	_, got, err := receiver.Read(ctx)
+	if err != nil {
+		t.Fatalf("receiver read: %v", err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("data mismatch: got %q, want %q", got, payload)
+	}
+
+	// Check transport stats are non-zero.
+	status := httpGetJSON[statusResponse](t, ts.URL+"/status")
+	if status.Transport.RoomsRelayed < 1 {
+		t.Fatalf("expected roomsRelayed >= 1, got %d", status.Transport.RoomsRelayed)
+	}
+	if status.Transport.BytesRelayed < int64(len(payload)) {
+		t.Fatalf("expected bytesRelayed >= %d, got %d", len(payload), status.Transport.BytesRelayed)
+	}
+	if status.Transport.FramesRelayed < 1 {
+		t.Fatalf("expected framesRelayed >= 1, got %d", status.Transport.FramesRelayed)
 	}
 }
 

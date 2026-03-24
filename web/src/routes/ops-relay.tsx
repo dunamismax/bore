@@ -101,6 +101,30 @@ function RelayStatusView({ relay }: { relay: RelayStatus }) {
         />
       </div>
 
+      {/* Transport stats */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard
+          label="Signal exchanges"
+          value={String(relay.transport.signalExchanges)}
+          note="Completed P2P candidate exchanges via /signal."
+        />
+        <MetricCard
+          label="Rooms relayed"
+          value={String(relay.transport.roomsRelayed)}
+          note="Transfers that used the relay as fallback transport."
+        />
+        <MetricCard
+          label="Bytes relayed"
+          value={formatBytes(relay.transport.bytesRelayed)}
+          note="Total encrypted bytes forwarded through relay fallback."
+        />
+        <MetricCard
+          label="Frames relayed"
+          value={String(relay.transport.framesRelayed)}
+          note="Total WebSocket frames forwarded through relay fallback."
+        />
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-3">
         {[
           {
@@ -149,8 +173,9 @@ function OpsRelayPage() {
           </h1>
           <p className="mt-4 text-lg text-muted-foreground">
             This page reads aggregate service data from the current relay at{" "}
-            <code className="font-mono text-sm">/status</code>. It is same-origin, read-only, and
-            scoped to uptime, room counts, and configured relay limits.
+            <code className="font-mono text-sm">/status</code>. The relay serves as a signaling
+            server for P2P connections and as a fallback transport. This view is same-origin,
+            read-only, and scoped to uptime, room counts, signaling activity, and configured limits.
           </p>
         </div>
         <div className="rounded-xl border border-dashed border-border bg-card/50 p-6">
@@ -158,7 +183,8 @@ function OpsRelayPage() {
             Current scope
           </p>
           <p className="text-muted-foreground">
-            No auth. No file inspection. No direct transport claims. No hidden backend.
+            No auth. No file inspection. No hidden backend. The relay is payload-blind — it
+            coordinates P2P connections and forwards encrypted bytes when direct fails.
           </p>
         </div>
       </section>

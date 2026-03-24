@@ -222,23 +222,25 @@ What is still missing:
 
 ### `web/`
 
-Status: active, intentionally thin, already useful
+Status: active, intentionally thin, P2P-first story
 
 What exists:
 
 - Bun-managed frontend workspace
-- React + Vite + TypeScript SPA with product homepage and relay ops page
+- React + Vite + TypeScript SPA with P2P-first product homepage and relay ops page
 - TanStack Query polling of `/status`
 - TanStack Router for client-side routing
 - shadcn/ui + Tailwind-based component system
+- transport method stats (signal exchanges, relay usage, bytes/frames) in operator page
+- Zod-validated status schema including transport stats
 - production build output embedded under `internal/relay/webui/dist/`
 
 What is still missing:
 
-- transport method stats in the operator page
 - authenticated operator workflows
 - historical or persisted relay state
 - control-plane mutations
+- direct transport success/failure rate visualization
 
 ### `cmd/punchthrough` + `internal/punchthrough/`
 
@@ -480,16 +482,16 @@ Checklist:
 
 ### Phase 4 — browser and operator surface
 
-Status: active / initial implementation landed
+Status: active / P2P-first updates landed
 
 Checklist:
 
 - [x] relay-served browser surface under `web/`
 - [x] same-origin read-only status page
 - [x] product story aligned with actual runtime
-- [ ] update product story to reflect P2P-first architecture
-- [ ] surface transport method stats in operator page
-- [ ] show direct vs relay breakdown in `/ops/relay`
+- [x] update product story to reflect P2P-first architecture
+- [x] surface transport method stats in operator page
+- [x] show direct vs relay breakdown in `/ops/relay`
 - [ ] decide whether browser surface stays static until auth story exists
 
 ### Phase 5 — P2P-first default path ★ ACTIVE
@@ -543,12 +545,12 @@ Exit criteria:
 
 ### Phase 7 — operator and browser surfaces for P2P reality
 
-Status: planned
+Status: active / initial transport stats landed
 
 Checklist:
 
-- [ ] show transport method breakdown (direct vs relay) in `/ops/relay`
-- [ ] add signaling health metrics to `/metrics`
+- [x] show transport method breakdown (direct vs relay) in `/ops/relay`
+- [x] add signaling health metrics to `/metrics`
 - [ ] add direct transport success/failure rates to operator view
 - [ ] decide whether relay history needs persistence
 - [ ] add useful historical views only if they solve real problems
@@ -561,15 +563,15 @@ Exit criteria:
 
 ### Phase 8 — verification and release discipline
 
-Status: active foundation, unfinished standards
+Status: active / fuzz targets and CI caching landed
 
 Checklist:
 
 - [x] root `.github/workflows/ci.yml` runs component verification
 - [x] `golangci-lint run` in CI
 - [x] `govulncheck ./...` in CI
-- [ ] cache Bun dependencies for the `web/` job
-- [ ] add fuzz targets for rendezvous code and transfer frame parsing
+- [x] cache Bun dependencies for the `web/` job
+- [x] add fuzz targets for rendezvous code and transfer frame parsing
 - [ ] add integration test for full direct transfer (loopback STUN mock)
 - [ ] add integration test for direct-fails-relay-succeeds path
 - [ ] keep all docs aligned when runtime claims change
@@ -720,20 +722,20 @@ Current answer:
 
 ## Immediate next moves
 
-### Current lane: Phase 5 complete
+### Current lane: Phase 4/7/8 updates complete
 
-Phase 5 (P2P-first default) is done. The next highest-leverage moves are:
+Phase 5 (P2P-first default) and Phase 4/7/8 surface updates are done. The next highest-leverage moves are:
 
 1. **Phase 6 — direct transport quality**: evaluate QUIC, measure throughput, improve NAT traversal
-2. **Phase 4 — browser surface**: update product story to reflect P2P-first reality
-3. **Phase 8 — verification**: add integration tests for direct and fallback paths
+2. **Phase 8 — integration tests**: loopback STUN mock for direct transfer, direct-fails-relay-succeeds path
+3. **Phase 7 — deeper operator stats**: direct transport success/failure rates
 
 ### If the goal is cleanup instead of features
 
-1. update browser surface copy to reflect P2P-first architecture
-2. add transport method stats to the operator page
-3. improve the direct transport timeout and retry behavior
-4. add more comprehensive tests for NAT combinations
+1. add integration tests for the full transfer paths
+2. improve the direct transport timeout and retry behavior
+3. add more comprehensive tests for NAT combinations
+4. decide whether browser surface stays static until auth story exists
 
 ---
 

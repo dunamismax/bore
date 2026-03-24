@@ -11,14 +11,16 @@ function HomePage() {
       <section className="animate-rise-in grid items-center gap-8 rounded-2xl border bg-card p-6 shadow-sm lg:grid-cols-[1.4fr_0.9fr] lg:p-10">
         <div>
           <p className="mb-2 font-mono text-xs uppercase tracking-widest text-primary">
-            Relay-based. Encrypted. Self-hostable.
+            Peer-to-peer. Encrypted. Self-hostable.
           </p>
           <h1 className="font-display text-4xl leading-[0.98] tracking-tight sm:text-5xl lg:text-6xl">
-            File transfer that keeps the relay in the dark.
+            Direct file transfer with no one in the middle.
           </h1>
           <p className="mt-4 max-w-[42rem] text-lg text-muted-foreground">
-            Bore moves a file between two machines with a short rendezvous code, a Noise handshake,
-            and a relay that forwards encrypted bytes without becoming a storage or trust anchor.
+            Bore moves a file directly between two machines using a short rendezvous code and a
+            Noise handshake. The default path is peer-to-peer via STUN discovery and UDP
+            hole-punching. When direct fails, a relay forwards encrypted bytes as a transparent
+            fallback — never seeing plaintext.
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">
@@ -35,7 +37,7 @@ function HomePage() {
               No accounts, no cloud mailbox, no payload inspection.
             </li>
             <li className="border-l-2 border-secondary/30 pl-4 text-muted-foreground">
-              Verified runtime path today is relay-based, not direct peer-to-peer.
+              Default transport is direct P2P. Relay is the automatic fallback.
             </li>
             <li className="border-l-2 border-secondary/30 pl-4 text-muted-foreground">
               Same-origin operator page reads aggregate relay state from{" "}
@@ -56,7 +58,7 @@ function HomePage() {
               ["Handshake", "Noise XXpsk0"],
               ["Channel", "ChaCha20-Poly1305"],
               ["Integrity", "SHA-256"],
-              ["Relay role", "encrypted frame broker"],
+              ["Default path", "direct P2P"],
             ].map(([label, value]) => (
               <div key={label}>
                 <dt className="text-xs uppercase tracking-widest opacity-60">{label}</dt>
@@ -75,23 +77,20 @@ function HomePage() {
               Current shipped path
             </p>
             <CardTitle className="font-display text-2xl tracking-tight">
-              Relay first, with the claims kept tight.
+              P2P first, relay fallback, claims kept tight.
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-muted-foreground">
             <p>
-              The active client in <code className="font-mono text-sm">cmd/bore</code> with
-              implementation packages under{" "}
-              <code className="font-mono text-sm">internal/client/</code> creates or parses the
-              rendezvous code, completes the cryptographic handshake, and streams encrypted file
-              frames through the relay in <code className="font-mono text-sm">cmd/relay</code> +{" "}
-              <code className="font-mono text-sm">internal/relay/</code>.
+              The client in <code className="font-mono text-sm">cmd/bore</code> discovers each
+              peer's public address via STUN, exchanges candidates through the relay's signaling
+              channel, and attempts a direct UDP connection via hole-punching. If direct fails, the
+              transfer falls back to the relay automatically.
             </p>
             <p>
-              The relay is self-hostable and operationally narrow: it exposes{" "}
-              <code className="font-mono text-sm">/healthz</code> and{" "}
-              <code className="font-mono text-sm">/status</code>, brokers rooms, and forwards bytes.
-              It does not decrypt or reinterpret transfer payloads.
+              The relay in <code className="font-mono text-sm">cmd/relay</code> serves two roles:
+              signaling server for P2P candidate exchange, and fallback transport for encrypted byte
+              forwarding. It never sees plaintext regardless of which path is used.
             </p>
           </CardContent>
         </Card>
@@ -129,10 +128,11 @@ function HomePage() {
         </h2>
         <ol className="grid gap-4 pl-0 [counter-reset:steps]">
           {[
-            "Sender opens a relay room and receives a full rendezvous code.",
-            "Receiver joins with the same code.",
-            "Both peers mix that code into a Noise XXpsk0 handshake.",
-            "Encrypted transfer frames move through the relay over WebSockets.",
+            "Sender creates a relay room and receives a full rendezvous code.",
+            "Each peer discovers its public address via STUN and exchanges candidates through the relay.",
+            "Peers attempt a direct UDP connection via hole-punching.",
+            "Both peers mix the rendezvous code into a Noise XXpsk0 handshake over the established connection.",
+            "Encrypted file frames flow directly between peers (or via relay if direct failed).",
             "Receiver verifies the final SHA-256 digest before accepting the file.",
           ].map((text, i) => (
             <li
@@ -147,10 +147,9 @@ function HomePage() {
           ))}
         </ol>
         <p className="mt-6 border-t border-border pt-6 text-muted-foreground">
-          Direct transport groundwork exists in{" "}
-          <code className="font-mono text-sm">internal/punchthrough/</code> and{" "}
-          <code className="font-mono text-sm">cmd/punchthrough</code>, but it is not part of the
-          verified transfer path yet.
+          If the direct connection fails at any step — unfavorable NAT, STUN failure, punch timeout
+          — the transfer falls back to the relay automatically. Use{" "}
+          <code className="font-mono text-sm">--relay-only</code> to skip the direct attempt.
         </p>
       </section>
 
@@ -159,13 +158,13 @@ function HomePage() {
         {[
           {
             label: "cmd/bore + internal/client/",
-            title: "CLI transfer engine",
-            desc: "Rendezvous, handshake, framing, relay transport, and file integrity checks.",
+            title: "P2P transfer engine",
+            desc: "Rendezvous, STUN discovery, signaling, direct transport, relay fallback, crypto, and file integrity.",
           },
           {
             label: "cmd/relay + internal/relay/",
-            title: "Payload-blind relay",
-            desc: "Pairs peers, forwards encrypted frames, and serves health, status, and the web UI.",
+            title: "Signaling server + fallback",
+            desc: "Coordinates P2P candidate exchange, forwards encrypted frames as fallback, and serves operator surfaces.",
           },
           {
             label: "cmd/bore-admin",
@@ -174,8 +173,8 @@ function HomePage() {
           },
           {
             label: "cmd/punchthrough + internal/punchthrough/",
-            title: "Future direct lane",
-            desc: "STUN probing and UDP hole-punching groundwork waiting for client integration.",
+            title: "NAT traversal engine",
+            desc: "STUN probing, NAT classification, and UDP hole-punching — integrated into the default transfer path.",
           },
         ].map((c) => (
           <Card key={c.label} className="animate-rise-in min-h-[14rem]">
