@@ -1,8 +1,0 @@
-go 1.26.1
-
-use (
-	./client
-	./lib/punchthrough
-	./services/bore-admin
-	./services/relay
-)

@@ -8,6 +8,8 @@ This document describes the current repo architecture and the near-term shape it
 
 ## System Overview
 
+The repo is now a single root Go module: `github.com/dunamismax/bore`.
+
 bore currently consists of five tracked components:
 
 ```text
@@ -34,11 +36,11 @@ bore currently consists of five tracked components:
                 └─────────────┘        └─────────────┘
 ```
 
-1. **Client (`client/`)** generates or parses a rendezvous code, performs the Noise handshake, and streams encrypted file data.
-2. **Relay (`services/relay/`)** pairs sender and receiver, forwards encrypted frames over WebSockets, and serves the embedded browser surface.
-3. **Web (`web/`)** provides the product-facing homepage and a read-only relay ops page, built with Bun + React + Vite + TypeScript (TanStack Router, TanStack Query, shadcn/ui, Tailwind).
-4. **Punchthrough (`lib/punchthrough/`)** contains STUN and UDP hole-punching primitives for a future direct path.
-5. **bore-admin (`services/bore-admin/`)** is a minimal operator CLI that queries relay status but does not participate in transfer runtime behavior.
+1. **Client (`cmd/bore` + `internal/client/`)** generates or parses a rendezvous code, performs the Noise handshake, and streams encrypted file data.
+2. **Relay (`cmd/relay` + `internal/relay/`)** pairs sender and receiver, forwards encrypted frames over WebSockets, and serves the embedded browser surface.
+3. **Web (`web/`)** provides the product-facing homepage and a read-only relay ops page, built with Bun + React + Vite + TypeScript.
+4. **Punchthrough (`cmd/punchthrough` + `internal/punchthrough/`)** contains STUN and UDP hole-punching primitives for a future direct path.
+5. **bore-admin (`cmd/bore-admin`)** is a minimal operator CLI that queries relay status but does not participate in transfer runtime behavior.
 
 The current verified path is **relay-based transfer**. Direct transport is still a planned integration step, not current runtime behavior.
 
@@ -47,42 +49,38 @@ The current verified path is **relay-based transfer**. Direct transport is still
 ## Repository Map
 
 ```text
-client/
-├── cmd/bore/                 # CLI entry point
-└── internal/
-    ├── code/                 # rendezvous code generation/parsing
-    ├── crypto/               # Noise handshake + secure channel
-    ├── engine/               # transfer framing, send/receive engine
-    ├── rendezvous/           # relay session orchestration
-    └── transport/            # WebSocket relay transport
+cmd/
+├── bore/                    # CLI entry point
+├── bore-admin/              # operator CLI entry point
+├── punchthrough/            # NAT tooling CLI entry point
+└── relay/                   # relay entry point
+
+internal/
+├── client/
+│   ├── code/                # rendezvous code generation/parsing
+│   ├── crypto/              # Noise handshake + secure channel
+│   ├── engine/              # transfer framing, send/receive engine
+│   ├── rendezvous/          # relay session orchestration
+│   └── transport/           # WebSocket relay transport + selector
+├── punchthrough/
+│   ├── punch/               # NAT classification + punch engine
+│   └── stun/                # STUN client and probing primitives
+└── relay/
+    ├── room/                # room lifecycle and registry
+    ├── transport/           # WebSocket server + frame forwarding
+    └── webui/               # embedded static build output + HTTP handler
 
 web/
 ├── src/
-│   ├── components/ui/        # shadcn/ui primitives
-│   ├── lib/                  # relay status client, format utils, cn()
-│   └── routes/               # TanStack Router route components
-└── tests/                    # focused frontend unit coverage
-
-services/relay/
-├── cmd/relay/                # relay entry point
-└── internal/
-    ├── room/                 # room lifecycle and registry
-    ├── transport/            # WebSocket server + frame forwarding
-    └── webui/                # embedded static build output + HTTP handler
-
-lib/punchthrough/
-├── cmd/punchthrough/         # operator/dev CLI
-└── pkg/
-    ├── punch/                # NAT classification + punch engine
-    └── stun/                 # STUN client and message handling
-
-services/bore-admin/
-└── cmd/bore-admin/           # minimal operator CLI
+│   ├── components/ui/       # shadcn/ui primitives
+│   ├── lib/                 # relay status client, format utils, cn()
+│   └── routes/              # TanStack Router route components
+└── tests/                   # focused frontend unit coverage
 ```
 
 ---
 
-## Client Architecture (`client/`)
+## Client Architecture (`cmd/bore` + `internal/client/`)
 
 ### Layering
 
@@ -100,7 +98,7 @@ WebSocket relay transport today / direct transport later
 
 ### Package responsibilities
 
-#### `client/cmd/bore`
+#### `cmd/bore`
 
 Owns:
 
@@ -114,7 +112,7 @@ Does not own:
 - transfer framing logic
 - relay room lifecycle
 
-#### `client/internal/code`
+#### `internal/client/code`
 
 Owns:
 
@@ -127,7 +125,7 @@ Important design rule:
 
 - the rendezvous code is not just a locator; it is also a cryptographic input to the handshake
 
-#### `client/internal/crypto`
+#### `internal/client/crypto`
 
 Owns:
 
@@ -142,7 +140,7 @@ Implementation truth today:
 - counter-based nonces
 - post-handshake encrypted application frames
 
-#### `client/internal/engine`
+#### `internal/client/engine`
 
 Owns:
 
@@ -162,31 +160,31 @@ Not yet in this layer:
 - directory transfer
 - richer multi-transfer history
 
-#### `client/internal/rendezvous`
+#### `internal/client/rendezvous`
 
 Owns:
 
 - sender/receiver session orchestration using the `transport.Dialer` interface
-- room creation / room join flow (delegated to the dialer)
+- room creation / room join flow delegated to the dialer
 - bridging transport + crypto + engine into the user flow
 
 This is the current happy-path integration layer for the client. It is transport-agnostic: callers supply a `Dialer`, which may be a `RelayDialer`, `Selector`, or any future implementation.
 
-#### `client/internal/transport`
+#### `internal/client/transport`
 
 Owns:
 
-- transport abstraction: `Conn` (bidirectional byte stream) and `Dialer` (sender/receiver connection establishment)
+- transport abstraction: `Conn` and `Dialer`
 - `RelayDialer`: WebSocket relay transport
-- `DirectDialer`: stub UDP direct transport (not yet functional end-to-end)
+- `DirectDialer`: stub UDP direct transport
 - `Selector`: tries direct first, falls back to relay
 - adapting transport IO to what the crypto and engine layers expect
 
-The CLI constructs a `Selector` dialer, which currently always falls back to relay because no signaling provides a direct address yet. When direct transport becomes viable, the `Selector` will automatically attempt it first.
+The CLI constructs a `Selector` dialer, which currently always falls back to relay because no signaling provides a direct address yet. When direct transport becomes viable, the `Selector` should automatically attempt it first.
 
 ---
 
-## Relay Architecture (`services/relay/`)
+## Relay Architecture (`cmd/relay` + `internal/relay/`)
 
 The relay is intentionally narrow. It should act like a room broker and encrypted byte pipe, not an application-layer participant.
 
@@ -204,7 +202,7 @@ encrypted frame forwarding
 
 ### Package responsibilities
 
-#### `services/relay/cmd/relay`
+#### `cmd/relay`
 
 Owns:
 
@@ -213,7 +211,7 @@ Owns:
 - wiring the transport server to the room registry
 - shutdown orchestration
 
-#### `services/relay/internal/room`
+#### `internal/relay/room`
 
 Owns:
 
@@ -222,7 +220,7 @@ Owns:
 - room lifecycle transitions
 - expiration / cleanup behavior
 
-#### `services/relay/internal/transport`
+#### `internal/relay/transport`
 
 Owns:
 
@@ -244,6 +242,16 @@ Current limitations:
 - no metrics endpoint yet
 - operator visibility is still limited to lightweight health/status summaries and a read-only browser page
 
+#### `internal/relay/webui`
+
+Owns:
+
+- embedded SPA build artifacts
+- static file resolution and SPA catch-all fallback
+- HTTP headers for the browser surface
+
+The web build writes into `internal/relay/webui/dist/`, and the relay embeds that directory directly.
+
 ---
 
 ## Browser Surface Architecture (`web/`)
@@ -261,7 +269,7 @@ TanStack Query for relay status polling
   ↓
 same-origin GET to relay `/status`
   ↓
-Vite builds SPA into static assets (dist/)
+Vite builds SPA into static assets under `internal/relay/webui/dist/`
 ```
 
 ### Responsibilities
@@ -288,16 +296,8 @@ Owns:
 
 Owns:
 
-- shadcn/ui component primitives (Button, Card)
-- project-owned, not a black-box library
-
-#### `services/relay/internal/webui`
-
-Owns:
-
-- embedded SPA build artifacts
-- static file resolution and SPA catch-all fallback
-- HTTP headers for the browser surface
+- shadcn/ui component primitives
+- project-owned UI building blocks rather than a remote dependency boundary
 
 Design constraints:
 
@@ -307,13 +307,13 @@ Design constraints:
 
 ---
 
-## Punchthrough Architecture (`lib/punchthrough/`)
+## Punchthrough Architecture (`cmd/punchthrough` + `internal/punchthrough/`)
 
-This module is groundwork for a future direct path. It is not yet integrated into the client runtime.
+This component is groundwork for a future direct path. It is not yet integrated into the client runtime.
 
 ### Package responsibilities
 
-#### `pkg/stun`
+#### `internal/punchthrough/stun`
 
 Owns:
 
@@ -321,7 +321,7 @@ Owns:
 - network probing support
 - external address discovery and related typing/config
 
-#### `pkg/punch`
+#### `internal/punchthrough/punch`
 
 Owns:
 
@@ -341,9 +341,9 @@ Near-term architectural goal:
 
 ---
 
-## Admin Surface (`services/bore-admin/`)
+## Admin Surface (`cmd/bore-admin`)
 
-This module is now a small but real operator CLI.
+This component is a small but real operator CLI.
 
 What it is:
 
@@ -358,7 +358,7 @@ What it is not:
 - a storage layer
 - an operational dependency of the relay or client
 
-Keep docs honest: treat this module as minimal operator tooling alongside the new read-only browser surface until it grows beyond status polling.
+Keep docs honest: treat this component as minimal operator tooling alongside the read-only browser surface until it grows beyond status polling.
 
 ---
 
@@ -451,6 +451,6 @@ This selection logic is planned, not current behavior.
 - integrate punchthrough into client transport selection
 - add resumable transfer state and resume protocol rules
 - harden relay operations with rate limiting and metrics
-- decide how much operator surface bore-admin actually needs beyond relay status polling
+- decide how much operator surface `bore-admin` actually needs beyond relay status polling
 
 For the current execution plan and verification commands, see [BUILD.md](BUILD.md). For security claims and limits, see [SECURITY.md](SECURITY.md).

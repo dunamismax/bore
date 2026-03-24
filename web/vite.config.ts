@@ -10,7 +10,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: "../services/relay/internal/webui/dist",
+    outDir: "../internal/relay/webui/dist",
     emptyOutDir: true,
   },
   server: {

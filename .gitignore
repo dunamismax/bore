@@ -1,9 +1,9 @@
 # Local build caches and binaries
 target/
-/client/bore
-/services/relay/relay
-/services/bore-admin/bore-admin
-/lib/punchthrough/punchthrough
+/bore
+/relay
+/bore-admin
+/punchthrough
 /web/node_modules
 /web/.astro
 *.test

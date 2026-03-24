@@ -12,16 +12,16 @@ It is not a claim of formal verification or external audit. It is the implementa
 
 bore's current cryptographic path has two layers:
 
-1. **Handshake:** Noise `XXpsk0` over Curve25519 / ChaChaPoly / SHA-256
-2. **Data channel:** ChaCha20-Poly1305 authenticated encryption for post-handshake frames
+1. Handshake: Noise `XXpsk0` over Curve25519 / ChaChaPoly / SHA-256
+2. Data channel: ChaCha20-Poly1305 authenticated encryption for post-handshake frames
 
 The rendezvous code is not just a routing hint. It is converted into a pre-shared key and mixed into the handshake, so the code participates directly in session authentication.
 
 Current implementation location:
 
-- `client/internal/crypto`
-- `client/internal/code`
-- `client/internal/rendezvous`
+- `internal/client/crypto`
+- `internal/client/code`
+- `internal/client/rendezvous`
 
 ---
 
@@ -37,11 +37,11 @@ Noise_XXpsk0_25519_ChaChaPoly_SHA256
 
 What this means in practice:
 
-- **XX** gives mutual authentication without a pre-existing identity registry
-- **psk0** mixes in a rendezvous-code-derived PSK at the start of the handshake
-- **25519** provides elliptic-curve Diffie-Hellman
-- **ChaChaPoly** provides AEAD encryption
-- **SHA-256** is used in the Noise hash / key schedule
+- `XX` gives mutual authentication without a pre-existing identity registry
+- `psk0` mixes in a rendezvous-code-derived PSK at the start of the handshake
+- `25519` provides elliptic-curve Diffie-Hellman
+- `ChaChaPoly` provides AEAD encryption
+- `SHA-256` is used in the Noise hash and key schedule
 
 ### Why this fits bore
 
@@ -70,7 +70,7 @@ This means:
 
 ## Rendezvous-code entropy
 
-The code format is implemented in `client/internal/code`.
+The code format is implemented in `internal/client/code`.
 
 Entropy sources:
 
@@ -88,9 +88,9 @@ Approximate entropy model:
 
 Default today:
 
-- **3 words**
-- **5 minute default room lifetime** in the relay path
-- **single receiver session intent** in the rendezvous design
+- 3 words
+- 5 minute default room lifetime in the relay path
+- single receiver session intent in the rendezvous design
 
 Operational implication:
 
@@ -102,7 +102,7 @@ Operational implication:
 
 ## Secure channel design
 
-After the Noise handshake completes, the peers use a secure channel abstraction in `client/internal/crypto`.
+After the Noise handshake completes, the peers use a secure channel abstraction in `internal/client/crypto`.
 
 Current properties:
 
@@ -114,13 +114,13 @@ Current properties:
 The channel is transport-agnostic at the IO boundary:
 
 - today it runs over the relay transport
-- later it can run over a direct path if the client integrates `lib/punchthrough/`
+- later it can run over a direct path if the client integrates `internal/punchthrough/`
 
 ---
 
 ## Transfer integrity
 
-The transfer engine in `client/internal/engine` adds an integrity layer on top of the encrypted channel:
+The transfer engine in `internal/client/engine` adds an integrity layer on top of the encrypted channel:
 
 - sender computes SHA-256 for the file being sent
 - receiver reassembles the file
@@ -139,9 +139,9 @@ The relay is intentionally outside the trust boundary for plaintext.
 
 The relay can know:
 
-- room/session identifier
+- room or session identifier
 - connection timing
-- sender/receiver network addresses
+- sender and receiver network addresses
 - total encrypted byte counts
 
 The relay should not know:
@@ -173,7 +173,7 @@ Design rule:
 
 ## What is not implemented yet
 
-- direct-transport integration through `lib/punchthrough/`
+- direct-transport integration through `internal/punchthrough/`
 - resumable transfer protocol state
 - relay-side rate limiting and broader anti-abuse controls
 - external crypto review or audit
@@ -186,7 +186,7 @@ These gaps matter because they limit what claims the repo can make today.
 
 1. how should direct-transport negotiation be expressed without weakening the current relay-based path?
 2. what resume-state format should be used once resumable transfer is implemented?
-3. what hardening checks should become mandatory in CI for the crypto-relevant Go modules?
-4. when does the relay need explicit key/metadata lifecycle documentation beyond the current payload-blind design?
+3. what hardening checks should become mandatory in CI for the crypto-relevant packages?
+4. when does the relay need explicit key and metadata lifecycle documentation beyond the current payload-blind design?
 
 For the broader threat model, see [`threat-model.md`](threat-model.md). For current security posture, see [`../SECURITY.md`](../SECURITY.md).

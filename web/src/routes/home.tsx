@@ -80,10 +80,12 @@ function HomePage() {
           </CardHeader>
           <CardContent className="space-y-3 text-muted-foreground">
             <p>
-              The active client in <code className="font-mono text-sm">client/</code> creates or
-              parses the rendezvous code, completes the cryptographic handshake, and streams
-              encrypted file frames through the relay in{" "}
-              <code className="font-mono text-sm">services/relay/</code>.
+              The active client in <code className="font-mono text-sm">cmd/bore</code> with
+              implementation packages under{" "}
+              <code className="font-mono text-sm">internal/client/</code> creates or parses the
+              rendezvous code, completes the cryptographic handshake, and streams encrypted file
+              frames through the relay in <code className="font-mono text-sm">cmd/relay</code> +{" "}
+              <code className="font-mono text-sm">internal/relay/</code>.
             </p>
             <p>
               The relay is self-hostable and operationally narrow: it exposes{" "}
@@ -146,7 +148,8 @@ function HomePage() {
         </ol>
         <p className="mt-6 border-t border-border pt-6 text-muted-foreground">
           Direct transport groundwork exists in{" "}
-          <code className="font-mono text-sm">lib/punchthrough/</code>, but it is not part of the
+          <code className="font-mono text-sm">internal/punchthrough/</code> and{" "}
+          <code className="font-mono text-sm">cmd/punchthrough</code>, but it is not part of the
           verified transfer path yet.
         </p>
       </section>
@@ -155,22 +158,22 @@ function HomePage() {
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {[
           {
-            label: "client/",
+            label: "cmd/bore + internal/client/",
             title: "CLI transfer engine",
             desc: "Rendezvous, handshake, framing, relay transport, and file integrity checks.",
           },
           {
-            label: "services/relay/",
+            label: "cmd/relay + internal/relay/",
             title: "Payload-blind relay",
             desc: "Pairs peers, forwards encrypted frames, and serves health, status, and the web UI.",
           },
           {
-            label: "services/bore-admin/",
+            label: "cmd/bore-admin",
             title: "CLI operator summary",
             desc: "Polls /status over HTTP for a terse terminal-side relay view.",
           },
           {
-            label: "lib/punchthrough/",
+            label: "cmd/punchthrough + internal/punchthrough/",
             title: "Future direct lane",
             desc: "STUN probing and UDP hole-punching groundwork waiting for client integration.",
           },

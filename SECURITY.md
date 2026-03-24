@@ -6,25 +6,25 @@ bore currently implements a real relay-based end-to-end encrypted transfer path 
 
 Implemented today:
 
-- Noise `XXpsk0` handshake in `client/internal/crypto`
+- Noise `XXpsk0` handshake in `internal/client/crypto`
 - HKDF-SHA256 derivation of a PSK from the rendezvous code
 - ChaCha20-Poly1305 encrypted secure channel
 - SHA-256 file integrity verification in the transfer engine
-- payload-blind relay forwarding in `services/relay/`
+- payload-blind relay forwarding in `internal/relay/`
 - room expiry and bounded in-memory room tracking in the relay
 - relay `/healthz` and `/status` endpoints that expose aggregate operator data only
 - same-origin relay-served web pages at `/` and `/ops/relay/`, with the ops page reading aggregate data from `/status`
 
 Important limits on those claims:
 
-- the currently verified path is **relay-based**, not direct peer-to-peer
+- the currently verified path is relay-based, not direct peer-to-peer
 - the relay is functional but not yet hardened with rate limiting or metrics
 - the browser surface is read-only and intentionally narrow; it is not an authenticated control plane
-- the system has **not** had an external security audit yet
+- the system has not had an external security audit yet
 - resumable transfer behavior is not implemented yet
-- bore is **not** an anonymity tool
+- bore is not an anonymity tool
 
-If you use bore today, treat it as an implemented encrypted transfer tool with unfinished operational hardening — not as a fully audited or production-hardened security product.
+If you use bore today, treat it as an implemented encrypted transfer tool with unfinished operational hardening, not as a fully audited or production-hardened security product.
 
 ---
 
@@ -32,38 +32,38 @@ If you use bore today, treat it as an implemented encrypted transfer tool with u
 
 ### End-to-end encryption
 
-- File data is encrypted between sender and receiver after the Noise handshake completes.
-- The relay forwards encrypted bytes and does not decrypt payloads.
-- The current cryptographic suite is `Noise_XXpsk0_25519_ChaChaPoly_SHA256`.
+- file data is encrypted between sender and receiver after the Noise handshake completes
+- the relay forwards encrypted bytes and does not decrypt payloads
+- the current cryptographic suite is `Noise_XXpsk0_25519_ChaChaPoly_SHA256`
 
 ### Peer authentication via rendezvous code
 
-- Both peers must know the rendezvous code.
-- The code is converted into a PSK with HKDF-SHA256 and mixed into the handshake.
-- A peer with the wrong code cannot complete the session successfully.
+- both peers must know the rendezvous code
+- the code is converted into a PSK with HKDF-SHA256 and mixed into the handshake
+- a peer with the wrong code cannot complete the session successfully
 
 ### Forward secrecy per session
 
-- The handshake uses ephemeral key exchange.
-- Session keys are derived for the transfer session and are not intended for long-term reuse.
-- Compromise of one session should not imply compromise of unrelated sessions.
+- the handshake uses ephemeral key exchange
+- session keys are derived for the transfer session and are not intended for long-term reuse
+- compromise of one session should not imply compromise of unrelated sessions
 
 ### Integrity verification
 
-- The encrypted channel provides authenticated encryption for in-flight frames.
-- The transfer engine verifies a final SHA-256 hash for the received file.
-- Corrupted or modified payloads should fail verification.
+- the encrypted channel provides authenticated encryption for in-flight frames
+- the transfer engine verifies a final SHA-256 hash for the received file
+- corrupted or modified payloads should fail verification
 
 ### Payload-blind relay model
 
 The relay should know only what it needs to route the session:
 
-- room/session identifier
+- room or session identifier
 - connection timing
-- sender/receiver IP addresses
+- sender and receiver IP addresses
 - encrypted byte counts
 
-The relay should **not** know:
+The relay should not know:
 
 - plaintext file content
 - plaintext file names
@@ -81,14 +81,14 @@ These are baseline resource controls, not a substitute for proper abuse protecti
 
 ### Operator endpoints and browser surface
 
-The relay now exposes `/healthz` and `/status` for basic operator visibility, and serves a same-origin browser surface at `/` and `/ops/relay/`.
+The relay exposes `/healthz` and `/status` for operator visibility and serves a same-origin browser surface at `/` and `/ops/relay`.
 Those surfaces are intended to reveal only aggregate service state such as:
 
 - process health
 - relay uptime
 - room counts by state
-- configured room/transport limits
-- static product/operator copy that matches the shipped runtime
+- configured room and transport limits
+- static product and operator copy that matches the shipped runtime
 
 They should not expose plaintext payloads, rendezvous codes, per-transfer decrypted metadata, or control-plane mutations.
 
@@ -119,12 +119,12 @@ They should not expose plaintext payloads, rendezvous codes, per-transfer decryp
 
 ### Non-goals
 
-bore does **not** currently aim to provide:
+bore does not currently aim to provide:
 
 - anonymity
 - censorship resistance
 - multi-party transfer
-- long-term identity / accounts
+- long-term identity or accounts
 - malware scanning or file-content validation
 - protection against compromised endpoints
 
@@ -138,18 +138,18 @@ Not yet implemented:
 
 - rate limiting
 - metrics endpoint
-- stronger operator controls / quotas
-- longer-term relay observation/history tooling
+- stronger operator controls and quotas
+- longer-term relay observation tooling
 
 This means the relay should be treated as functional but not yet production-hardened against abuse or observability requirements.
 
 ### Browser surface is intentionally thin
 
-The new web layer is intentionally read-only. It does not add auth, persistent operator state, or mutation endpoints. Treat it as a convenience view over aggregate relay state, not a security boundary or control plane. If Bore later adds local durable operator state or resumable-transfer metadata, start with a small relational SQLite store by default.
+The web layer is intentionally read-only. It does not add auth, persistent operator state, or mutation endpoints. Treat it as a convenience view over aggregate relay state, not a security boundary or control plane. If Bore later adds local durable operator state or resumable-transfer metadata, start with a small relational SQLite store by default.
 
 ### Direct transport is not active yet
 
-`lib/punchthrough/` exists, but it is not wired into the current client flow. Security claims should stay scoped to the current relay-based path.
+`internal/punchthrough/` exists, but it is not wired into the current client flow. Security claims should stay scoped to the current relay-based path.
 
 ### No resumable transfer protocol yet
 
@@ -174,14 +174,14 @@ That is consistent with bore's design. It is also why bore should not be describ
 
 ## Dependency policy
 
-- Dependencies are tracked per Go module via `go.mod` and `go.sum`.
+- Dependencies are tracked in the root `go.mod` and `go.sum`.
 - Crypto-relevant client dependencies should stay small, explicit, and reviewable.
-- Dependency updates should be accompanied by focused verification in the affected module.
+- Dependency updates should be accompanied by focused verification in the affected package set.
 
 Planned hardening work:
 
-- add repeatable dependency review steps for the Go modules
-- add broader CI/security checks as the repo stabilizes
+- add repeatable dependency review steps for the consolidated Go module
+- add broader CI and security checks as the repo stabilizes
 - keep crypto and transport dependencies intentionally narrow
 
 ---
@@ -190,8 +190,8 @@ Planned hardening work:
 
 If you discover a security vulnerability in bore, report it responsibly:
 
-1. **Do not** open a public GitHub issue.
-2. Email: `security@dunamismax.com` or use GitHub private vulnerability reporting.
+1. Do not open a public GitHub issue.
+2. Email `security@dunamismax.com` or use GitHub private vulnerability reporting.
 3. Include a description, reproduction steps, impact, and any logs or traces that matter.
 4. The project should acknowledge within 48 hours and provide a remediation timeline.
 
@@ -203,7 +203,7 @@ If you discover a security vulnerability in bore, report it responsibly:
 |---|---|
 | Relay-based encrypted transfer | Implemented |
 | Threat model documentation | Present |
-| Local tests for client/relay modules | Present |
+| Local tests for client and relay packages | Present |
 | Direct transport security review | Deferred until direct transport is integrated |
 | Relay abuse controls | TODO |
 | External review / audit | TODO |

@@ -17,9 +17,8 @@ jobs:
           go-version: stable
       - name: Test, vet, build
         run: |
-          cd client
-          go test ./...
-          go vet ./...
+          go test ./internal/client/... ./cmd/bore
+          go vet ./internal/client/... ./cmd/bore
           go build ./cmd/bore
 
   relay:
@@ -32,9 +31,8 @@ jobs:
           go-version: stable
       - name: Test, vet, build
         run: |
-          cd services/relay
-          go test ./...
-          go vet ./...
+          go test ./internal/relay/... ./cmd/relay
+          go vet ./internal/relay/... ./cmd/relay
           go build ./cmd/relay
 
   punchthrough:
@@ -45,37 +43,41 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: stable
-      - name: Test, build
+      - name: Test, vet, build
         run: |
-          cd lib/punchthrough
-          go test ./...
+          go test ./internal/punchthrough/... ./cmd/punchthrough
+          go vet ./internal/punchthrough/... ./cmd/punchthrough
           go build ./cmd/punchthrough
 
-  admin:
-    name: Admin
+  bore-admin:
+    name: bore-admin
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: stable
-      - name: Build
+      - name: Vet and build
         run: |
-          cd services/bore-admin
+          go vet ./cmd/bore-admin
           go build ./cmd/bore-admin
 
   web:
     name: Web
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
-      - name: Install, check, test, build
-        run: |
-          cd web
-          bun install
-          bun run check
-          bun run test
-          bun run build
+          bun-version: 1.3.1
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Check
+        run: bun run check
+      - name: Test
+        run: bun run test
+      - name: Build
+        run: bun run build
