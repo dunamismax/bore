@@ -209,7 +209,7 @@ func TestSendRecvSmallFile(t *testing.T) {
 		done <- recvResult{res, err}
 	}()
 
-	sendRes, err := SendData(initCh, a, filename, fileData)
+	sendRes, err := SendData(initCh, a, a, filename, fileData)
 	if err != nil {
 		t.Fatalf("send: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestSendRecvLargeFile(t *testing.T) {
 		done <- recvResult{res, err}
 	}()
 
-	sendRes, err := SendData(initCh, a, "large.bin", fileData)
+	sendRes, err := SendData(initCh, a, a, "large.bin", fileData)
 	if err != nil {
 		t.Fatalf("send: %v", err)
 	}
@@ -283,7 +283,7 @@ func TestSendRecvEmptyFile(t *testing.T) {
 		done <- recvResult{res, err}
 	}()
 
-	_, err := SendData(initCh, a, "empty.txt", []byte{})
+	_, err := SendData(initCh, a, a, "empty.txt", []byte{})
 	if err != nil {
 		t.Fatalf("send: %v", err)
 	}

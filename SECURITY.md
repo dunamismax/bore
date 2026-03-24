@@ -151,9 +151,19 @@ The web layer is intentionally read-only. It does not add auth, persistent opera
 
 `internal/punchthrough/` exists, but it is not wired into the current client flow. Security claims should stay scoped to the current relay-based path.
 
-### No resumable transfer protocol yet
+### Resume state is filesystem-based
 
-Resume-state integrity and interruption recovery are still future work. Do not claim restart-safe transfer semantics yet.
+Resume state is persisted as plaintext JSON + partial file data under `<outputDir>/.bore/`. Security notes:
+
+- resume state files are created with mode 0600 (owner-read/write only)
+- the `.bore/` directory is created with mode 0700
+- partial data on disk is unencrypted — it represents the plaintext file content as received
+- resume state is validated against the file header on each connection; mismatched metadata triggers a full restart
+- the final SHA-256 covers the entire reassembled file, not just the resumed portion
+- on successful transfer, all resume state and partial files are deleted
+- on SHA-256 verification failure after resume, resume state is cleaned up to prevent retrying corrupt data
+
+Threat consideration: an attacker with filesystem access to the receiver can read partial file content. This is consistent with bore's non-goal of protecting against compromised endpoints.
 
 ### No external security review yet
 
@@ -202,6 +212,7 @@ If you discover a security vulnerability in bore, report it responsibly:
 | Area | Status |
 |---|---|
 | Relay-based encrypted transfer | Implemented |
+| Resumable transfer with integrity verification | Implemented |
 | Threat model documentation | Present |
 | Local tests for client and relay packages | Present |
 | Direct transport security review | Deferred until direct transport is integrated |

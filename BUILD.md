@@ -43,8 +43,8 @@ Treat this document like a live program, not a retrospective. Do not let the exi
 
 ### Recommended build order unless a bug/security issue interrupts
 
-1. make direct-path transport real and measurable
-2. make single-file transfer durable enough to resume cleanly
+1. ~~make direct-path transport real and measurable~~ (Phase 1 done, pending real-world validation)
+2. ~~make single-file transfer durable enough to resume cleanly~~ (Phase 2 done)
 3. harden relay operations and verification discipline
 4. deepen operator tooling only where runtime reality justifies it
 
@@ -66,6 +66,7 @@ bore currently ships a relay-based encrypted file transfer path plus a real in-r
 - rendezvous code generation and parsing
 - Noise `XXpsk0` handshake
 - encrypted transfer framing with SHA-256 verification
+- resumable single-file transfers with on-disk checkpoint state
 - relay `/healthz` and `/status` endpoints
 - relay-served browser surface at `/` and `/ops/relay`
 - `bore-admin status` against the relay status endpoint
@@ -74,7 +75,6 @@ bore currently ships a relay-based encrypted file transfer path plus a real in-r
 ### What is still not done
 
 - direct transport integrated end-to-end into the client path
-- resumable transfers
 - directory transfer
 - relay rate limiting, quotas, and metrics
 - authenticated or write-capable browser workflows
@@ -133,15 +133,20 @@ bore/
 
 ### `cmd/bore` + `internal/client/`
 
-Status: working relay-based transfer path with direct-path integration complete
+Status: working relay-based transfer path with direct-path integration and resume support
 
 What exists:
 
 - rendezvous code model and parsing
 - Noise `XXpsk0` handshake
 - secure channel framing over arbitrary `io.ReadWriter`
-- transfer engine with header, chunk, and end framing
+- transfer engine with header, ResumeOffer, chunk, and end framing
 - SHA-256 integrity verification
+- resumable single-file transfers with on-disk checkpoint state
+- ResumeOffer protocol: receiver tells sender which chunk to start from
+- deterministic transfer ID from (filename, size, SHA-256, chunk_size)
+- restart-vs-resume rules: metadata match + correct partial file size → resume; otherwise restart from 0
+- `ReceiveFile` for disk-based resume, `ReceiveToFile` in rendezvous for full flow
 - relay transport plus selector wiring
 - `SelectionResult` with `Method`, `FallbackReason`, and `DirectErr` for observable transport decisions
 - `Candidate` and `CandidatePair` types for relay-coordinated peer address exchange
@@ -160,7 +165,6 @@ What exists:
 What is still missing:
 
 - end-to-end direct transfer verified across real NATs (current implementation is correct but needs real-world validation)
-- resume support
 - directory transfer
 - richer progress and transfer history handling
 
@@ -407,19 +411,29 @@ Exit criteria:
 
 ### Phase 2 — transfer durability
 
-Status: planned, still essential
+Status: done / checked
 
 Checklist:
 
-- [ ] choose and document the resume-state shape before writing code blindly
-- [ ] persist enough sender/receiver state to resume a single-file transfer safely
-- [ ] define restart vs resume rules when metadata or digests do not match
-- [ ] add interruption-recovery tests for relay-based transfers first
+- [x] choose and document the resume-state shape before writing code blindly
+- [x] persist enough sender/receiver state to resume a single-file transfer safely
+- [x] define restart vs resume rules when metadata or digests do not match
+- [x] add interruption-recovery tests for relay-based transfers first
 - [ ] add directory transfer only after single-file resume semantics are solid and explicit
 
 Exit criteria:
 
 - a stopped single-file transfer can resume or restart with deterministic behavior and tests
+
+Implementation notes:
+
+- wire protocol extended with `ResumeOffer (0x04)` message: receiver → sender after header
+- resume state persisted as `<outputDir>/.bore/resume-<transferID>.json` + partial data file
+- transfer ID is a deterministic hash of (filename, size, SHA-256, chunk_size) — same file always resumes regardless of relay room or rendezvous code
+- restart-vs-resume rules: metadata must match AND partial file byte count must be correct; any mismatch triggers full restart from chunk 0
+- final SHA-256 covers entire reassembled file; if resumed data was corrupted, hash check fails and state is cleaned up
+- `ReceiveFile` in engine handles disk-based resume; `ReceiveToFile` in rendezvous wires it into the full flow
+- all existing tests updated for the new protocol; 14 new tests added for resume state persistence, protocol encoding, disk-based receive, and resume behavior
 
 ### Phase 3 — relay hardening
 
@@ -564,12 +578,13 @@ Mitigation:
 - describe direct transport as the next implementation target, not a current capability
 - make fallback reasons observable before changing any README/product copy
 
-### Risk: no resumable state yet
+### Risk: resume state is per-receiver only
 
 Mitigation:
 
-- keep transfer claims modest
-- add checkpoint and resume state before claiming interruption recovery
+- resume state lives on the receiver's filesystem only
+- the sender re-sends from the requested chunk on each connection — it does not persist progress
+- directory transfer resume requires additional design work beyond single-file resume
 
 ### Risk: relay hardening is incomplete
 
@@ -599,17 +614,15 @@ Current answer:
 
 ### Default next lane
 
-If you are choosing the next substantive feature lane, pick **Phase 1 direct-path integration** before broadening the UI or operator tooling.
+If you are choosing the next substantive feature lane, pick **Phase 3 relay hardening** — adding rate limiting, timeouts, metrics, and production posture to the relay.
 
-### Concrete order of attack inside Phase 1
+### Concrete order of attack inside Phase 3
 
-1. ~~define the candidate-exchange shape in rendezvous~~ done: `Candidate`, `CandidatePair` types exist
-2. ~~make selector fallback reasons explicit~~ done: `SelectionResult` with `Method`, `FallbackReason`, `DirectErr`
-3. ~~prove the direct/fallback behavior with deterministic tests~~ done: unit + integration coverage
-4. ~~implement relay-coordinated signaling to publish/consume candidate data during rendezvous~~ done: `/signal` endpoint + `ExchangeCandidates` client
-5. ~~wire STUN/NAT discovery into direct attempt setup using `Candidate`~~ done: `DiscoverCandidate` + `Selector.EnableDirect`
-6. ~~add UDP reliability/framing layer over the direct transport~~ done: `ReliableConn` with retransmit, ACK, FIN
-7. real-world NAT validation before widening product claims beyond relay-first
+1. add explicit rate limiting around room creation, room joins, and connection churn
+2. add quotas or stronger resource controls for room occupancy and message pressure
+3. add explicit HTTP server timeouts and tighten transport guardrails
+4. add metrics endpoint and operator-facing counters
+5. tighten deployment and service packaging rails
 
 ### If the goal is cleanup instead of features
 

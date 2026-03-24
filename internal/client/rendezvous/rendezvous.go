@@ -99,8 +99,8 @@ func SendWithCodeCallback(
 		return SenderResult{}, fmt.Errorf("handshake: %w", err)
 	}
 
-	// Step 5: send file.
-	result, err := engine.SendData(ch, rw, filename, data)
+	// Step 5: send file (sender reads ResumeOffer from rw, then sends).
+	result, err := engine.SendData(ch, rw, rw, filename, data)
 	if err != nil {
 		return SenderResult{}, fmt.Errorf("send data: %w", err)
 	}
@@ -139,6 +139,43 @@ func Receive(ctx context.Context, codeStr string, dialer transport.Dialer, relay
 
 	// Step 4: receive file.
 	result, err := engine.ReceiveData(ch, rw)
+	if err != nil {
+		return ReceiverResult{}, fmt.Errorf("receive data: %w", err)
+	}
+
+	return ReceiverResult{Transfer: result}, nil
+}
+
+// ReceiveToFile executes the receiver flow with disk-based resume support.
+//
+// On success, the received file is written to <outputDir>/<filename>.
+// On interruption, partial state is persisted so the next call can resume.
+func ReceiveToFile(ctx context.Context, codeStr string, dialer transport.Dialer, relayURL, outputDir string) (ReceiverResult, error) {
+	if relayURL == "" {
+		relayURL = DefaultRelayURL
+	}
+
+	// Step 1: parse the rendezvous code.
+	fullCode, err := code.ParseFull(codeStr, relayURL)
+	if err != nil {
+		return ReceiverResult{}, fmt.Errorf("parse rendezvous code: %w", err)
+	}
+
+	// Step 2: dial as receiver with the session ID (room ID for relay).
+	rw, err := dialer.DialReceiver(ctx, fullCode.RoomID)
+	if err != nil {
+		return ReceiverResult{}, fmt.Errorf("dial receiver: %w", err)
+	}
+
+	// Step 3: Noise handshake as responder.
+	pakeStr := fullCode.PakeCode.String()
+	ch, err := crypto.Handshake(crypto.Responder, pakeStr, rw)
+	if err != nil {
+		return ReceiverResult{}, fmt.Errorf("handshake: %w", err)
+	}
+
+	// Step 4: receive file to disk with resume support.
+	result, err := engine.ReceiveFile(ch, rw, outputDir)
 	if err != nil {
 		return ReceiverResult{}, fmt.Errorf("receive data: %w", err)
 	}

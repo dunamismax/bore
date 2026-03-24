@@ -144,19 +144,29 @@ Implementation truth today:
 
 Owns:
 
-- transfer header/chunk/end framing
-- sender-side file streaming
-- receiver-side reassembly
+- transfer header/ResumeOffer/chunk/end framing
+- sender-side file streaming with resume-aware chunk skipping
+- receiver-side reassembly with on-disk checkpoint state
 - SHA-256 integrity verification for the received file
+- resume state persistence and validation (`ResumeState`, `TransferID`)
+- restart-vs-resume decision logic (metadata match + partial file validation)
 
 Current scope:
 
-- single file send/receive
+- single file send/receive with resume support
 - relay-based transport path
+
+Resume protocol:
+
+- after the receiver gets the file header, it computes a `TransferID` (deterministic hash of filename, size, SHA-256, chunk_size)
+- if valid resume state and matching partial data exist on disk, the receiver sends `ResumeOffer(startChunk=N)`
+- otherwise, the receiver sends `ResumeOffer(startChunk=0)` for a fresh transfer
+- the sender skips chunks 0..N-1 and streams from chunk N onward
+- on interruption, the receiver persists its partial progress; on success, resume state is cleaned up
+- final SHA-256 covers the entire reassembled file, not just the resumed portion
 
 Not yet in this layer:
 
-- resumable transfer bookkeeping
 - directory transfer
 - richer multi-transfer history
 
@@ -372,14 +382,16 @@ Keep docs honest: treat this component as minimal operator tooling alongside the
 
 ## Data And Persistence Posture
 
-Bore's current shipped architecture has **no durable data layer**.
+Bore's current shipped architecture uses **filesystem-based resume state** on the receiver side and **no durable data layer** on the relay.
 
 Current truth:
 
+- the receiver persists resume state as JSON + partial data under `<outputDir>/.bore/`
+- resume state is keyed by a deterministic transfer ID derived from file metadata
 - the relay keeps active room state in an in-memory registry with TTL-based cleanup
 - the browser surface is a read-only same-origin view over live relay status
 - `bore-admin` is an on-demand polling CLI, not a history service
-- the client does not persist resumable transfer metadata or transfer history yet
+- the client does not persist transfer history yet
 
 If Bore later needs local durable state, the default path is:
 
@@ -414,10 +426,16 @@ Sender                               Relay                         Receiver
   │ 4. Noise XXpsk0 handshake over encrypted transport path           │
   │◄─────────────────────────────────────────────────────────────────►│
   │                                    │                              │
-  │ 5. Sender streams encrypted header/chunks/end                    │
+  │ 5. Sender sends file header                                      │
   │─────────────────────────────────────────────────────────────────►│
   │                                    │                              │
-  │ 6. Receiver reassembles and verifies SHA-256                     │
+  │ 6. Receiver checks for resume state, sends ResumeOffer(startChunk)│
+  │◄─────────────────────────────────────────────────────────────────│
+  │                                    │                              │
+  │ 7. Sender streams chunks from startChunk + end                   │
+  │─────────────────────────────────────────────────────────────────►│
+  │                                    │                              │
+  │ 8. Receiver reassembles and verifies SHA-256                     │
   │                                    │                              │
 ```
 
@@ -457,8 +475,8 @@ This selection logic is planned, not current behavior.
 ## Open Architectural Work
 
 - validate direct transport across diverse real-world NAT environments before promoting beyond opt-in
-- add resumable transfer state and resume protocol rules
 - harden relay operations with rate limiting and metrics
+- add directory transfer (after single-file resume semantics are proven)
 - decide how much operator surface `bore-admin` actually needs beyond relay status polling
 
 For the current execution plan and verification commands, see [BUILD.md](BUILD.md). For security claims and limits, see [SECURITY.md](SECURITY.md).

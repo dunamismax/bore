@@ -224,16 +224,12 @@ func cmdReceive(args []string) error {
 		Role:         "receiver",
 	}
 
-	result, err := rendezvous.Receive(context.Background(), codeStr, dialer, relayURL)
+	result, err := rendezvous.ReceiveToFile(context.Background(), codeStr, dialer, relayURL, outDir)
 	if err != nil {
 		return fmt.Errorf("transfer failed: %w", err)
 	}
 
 	outPath := filepath.Join(outDir, result.Transfer.Filename)
-	if err := os.WriteFile(outPath, result.Transfer.Data, 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", outPath, err)
-	}
-
 	fmt.Fprintf(os.Stderr, "Received: %s (%d bytes, %d chunks)\n",
 		result.Transfer.Filename, result.Transfer.Size, result.Transfer.ChunksReceived)
 	fmt.Fprintf(os.Stderr, "SHA-256: %x\n", result.Transfer.SHA256)
@@ -316,6 +312,7 @@ var implementedItems = []string{
 	"ChaCha20-Poly1305 AEAD data channel with counter nonces",
 	"SHA-256 per-file integrity verification",
 	"file transfer with chunking (256 KiB chunks)",
+	"resumable single-file transfers with on-disk checkpoint state",
 	"human-readable rendezvous codes (2-5 words, 26-50 bits entropy)",
 	"WebSocket relay transport (zero-knowledge relay)",
 	"bore send / bore receive CLI commands",
@@ -323,7 +320,6 @@ var implementedItems = []string{
 
 var notYetBuilt = []string{
 	"direct P2P transport (UDP hole-punching)",
-	"resumable transfers",
 	"directory transfer",
 	"transfer history",
 	"rate limiting and DoS protection on relay",
@@ -333,7 +329,7 @@ var notYetBuilt = []string{
 var nextFocus = []string{
 	"direct P2P path via punchthrough library",
 	"relay rate limiting",
-	"resumable transfers",
+	"relay hardening (quotas, timeouts, metrics)",
 }
 
 type component struct {
