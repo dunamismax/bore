@@ -14,6 +14,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  go-quality:
+    name: Go quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Format check
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - uses: golangci/golangci-lint-action@v7
+      - name: Vulnerability scan
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...
+
   client:
     name: Client
     runs-on: ubuntu-latest
@@ -23,10 +40,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Test, vet, build
+      - name: Test and build
         run: |
           go test ./internal/client/... ./cmd/bore
-          go vet ./internal/client/... ./cmd/bore
           go build ./cmd/bore
 
   relay:
@@ -38,10 +54,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Test, vet, build
+      - name: Test and build
         run: |
           go test ./internal/relay/... ./cmd/relay
-          go vet ./internal/relay/... ./cmd/relay
           go build ./cmd/relay
 
   punchthrough:
@@ -53,10 +68,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Test, vet, build
+      - name: Test and build
         run: |
           go test ./internal/punchthrough/... ./cmd/punchthrough
-          go vet ./internal/punchthrough/... ./cmd/punchthrough
           go build ./cmd/punchthrough
 
   bore-admin:
@@ -68,10 +82,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Vet and build
-        run: |
-          go vet ./cmd/bore-admin
-          go build ./cmd/bore-admin
+      - name: Build
+        run: go build ./cmd/bore-admin
 
   web:
     name: Web
