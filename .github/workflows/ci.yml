@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  client:
+    name: Client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Test, vet, build
+        run: |
+          cd client
+          go test ./...
+          go vet ./...
+          go build ./cmd/bore
+
+  relay:
+    name: Relay
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Test, vet, build
+        run: |
+          cd services/relay
+          go test ./...
+          go vet ./...
+          go build ./cmd/relay
+
+  punchthrough:
+    name: Punchthrough
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Test, build
+        run: |
+          cd lib/punchthrough
+          go test ./...
+          go build ./cmd/punchthrough
+
+  admin:
+    name: Admin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Build
+        run: |
+          cd services/bore-admin
+          go build ./cmd/bore-admin
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install, check, test, build
+        run: |
+          cd web
+          bun install
+          bun run check
+          bun run test
+          bun run build
