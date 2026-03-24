@@ -15,7 +15,20 @@ If this file and the code disagree, fix both in the same change.
 
 ---
 
-## Execution Posture
+## Mission
+
+Build a privacy-first file transfer tool that makes encrypted delivery feel simple for end users while keeping the operational surface honest for relay operators.
+
+The product line stays narrow on purpose:
+
+- the sender and receiver should get one trustworthy path before the repo claims many
+- relay transport is the shipped truth until direct transport is proven, measured, and worth promoting
+- the browser surface exists to explain runtime state, not to become a separate control plane
+- future durability work should make transfers more dependable without turning bore into a generic sync platform
+
+---
+
+## Current execution posture
 
 bore is **active**, not archival.
 
@@ -37,7 +50,7 @@ Treat this document like a live program, not a retrospective. Do not let the exi
 
 ---
 
-## Current Truth
+## Repo snapshot
 
 bore currently ships a relay-based encrypted file transfer path plus a real in-repo browser surface built from one root Go module and one frontend workspace:
 
@@ -74,7 +87,7 @@ The only verified transfer path today is **relay-based**. Direct transport exist
 
 ---
 
-## Data Layer Stance
+## Data layer stance
 
 Current implementation truth:
 
@@ -93,7 +106,7 @@ Doctrine for future work:
 
 ---
 
-## Monorepo Layout
+## Monorepo layout
 
 ```text
 bore/
@@ -116,7 +129,7 @@ bore/
 
 ---
 
-## Component Snapshots
+## Component snapshots
 
 ### `cmd/bore` + `internal/client/`
 
@@ -219,7 +232,7 @@ What is still missing:
 
 ---
 
-## Build / Run / Verify
+## Build / run / verify
 
 ### Prerequisites
 
@@ -314,7 +327,7 @@ Expected result:
 
 ---
 
-## Milestone Map
+## Milestone map
 
 These are the real milestones still in front of the repo.
 
@@ -336,7 +349,7 @@ Success means `bore-admin` and the browser surface grow only where they solve re
 
 ---
 
-## Phase Dashboard
+## Phase dashboard
 
 ### Phase 0 — relay-based encrypted transfer path
 
@@ -463,7 +476,7 @@ Exit criteria:
 
 ---
 
-## Focused Verification Checklist
+## Focused verification checklist
 
 Use the narrowest verification that proves the current claim.
 
@@ -514,7 +527,7 @@ Run every affected command above, then verify the docs still match the code path
 
 ---
 
-## Working Rules
+## Working rules
 
 1. Keep the relay payload-blind. If it can inspect file contents, the design regressed.
 2. Treat the rendezvous code as cryptographic input, not just a locator.
@@ -527,30 +540,7 @@ Run every affected command above, then verify the docs still match the code path
 
 ---
 
-## Immediate Next Moves
-
-### Default next lane
-
-If you are choosing the next substantive feature lane, pick **Phase 1 direct-path integration** before broadening the UI or operator tooling.
-
-### Concrete order of attack inside Phase 1
-
-1. define the candidate-exchange shape in rendezvous
-2. wire STUN/NAT discovery into direct attempt setup
-3. make selector fallback reasons explicit
-4. prove the direct/fallback behavior with deterministic tests
-5. only then widen product claims beyond relay-first
-
-### If the goal is cleanup instead of features
-
-1. tighten docs around the relay-based path and current limits
-2. remove claims that imply direct transport is already present
-3. keep the browser and operator surface clearly scoped to what it actually does today
-4. trim stale commentary that does not help a future maintainer ship the next step
-
----
-
-## Risks And Open Questions
+## Risks and open questions
 
 ### Risk: direct-path groundwork exists, but the runtime proof does not
 
@@ -591,7 +581,30 @@ Current answer:
 
 ---
 
-## Resume Checklist
+## Immediate next moves
+
+### Default next lane
+
+If you are choosing the next substantive feature lane, pick **Phase 1 direct-path integration** before broadening the UI or operator tooling.
+
+### Concrete order of attack inside Phase 1
+
+1. define the candidate-exchange shape in rendezvous
+2. wire STUN/NAT discovery into direct attempt setup
+3. make selector fallback reasons explicit
+4. prove the direct/fallback behavior with deterministic tests
+5. only then widen product claims beyond relay-first
+
+### If the goal is cleanup instead of features
+
+1. tighten docs around the relay-based path and current limits
+2. remove claims that imply direct transport is already present
+3. keep the browser and operator surface clearly scoped to what it actually does today
+4. trim stale commentary that does not help a future maintainer ship the next step
+
+---
+
+## Resume checklist
 
 If you are resuming this repo later, do this in order:
 
