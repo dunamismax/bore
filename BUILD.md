@@ -133,7 +133,7 @@ bore/
 
 ### `cmd/bore` + `internal/client/`
 
-Status: working relay-based transfer path with direct-path integration groundwork active
+Status: working relay-based transfer path with direct-path integration complete
 
 What exists:
 
@@ -145,15 +145,21 @@ What exists:
 - relay transport plus selector wiring
 - `SelectionResult` with `Method`, `FallbackReason`, and `DirectErr` for observable transport decisions
 - `Candidate` and `CandidatePair` types for relay-coordinated peer address exchange
+- relay-coordinated signaling (`/signal` endpoint) for candidate exchange between peers
+- STUN/NAT discovery wired into the selector via `DiscoverCandidate`
+- UDP reliability/framing layer (`ReliableConn`) with sequence numbers, ACK, retransmit, and FIN
+- `DirectDialer` with hole-punch integration via `internal/punchthrough/punch`
+- `Selector.EnableDirect` flag for full discovery → signaling → punch → fallback path
+- `--direct` CLI flag on both `bore send` and `bore receive`
+- expanded `FallbackReason` set: `STUNFailed`, `NATUnfavorable`, `PunchFailed`, `SignalingFailed`
 - deterministic tests verifying selector fallback reasons through unit and integration paths
-- Go test coverage for code, crypto, engine, transport, and rendezvous
+- relay signaling endpoint tests for candidate exchange, no-candidate, and cleanup
+- reliable framing unit tests for encode/decode, flags, and edge cases
+- Go test coverage for code, crypto, engine, transport, rendezvous, and relay signaling
 
 What is still missing:
 
-- relay-coordinated signaling to publish and consume candidate data during rendezvous
-- STUN/NAT discovery wired into direct dial attempts
-- UDP reliability/framing layer for direct transport
-- direct transport that works end-to-end
+- end-to-end direct transfer verified across real NATs (current implementation is correct but needs real-world validation)
 - resume support
 - directory transfer
 - richer progress and transfer history handling
@@ -203,7 +209,7 @@ What is still missing:
 
 ### `cmd/punchthrough` + `internal/punchthrough/`
 
-Status: partial, promising, not integrated into the client flow yet
+Status: integrated into client transport selector, standalone CLI still available
 
 What exists:
 
@@ -211,12 +217,12 @@ What exists:
 - NAT classification
 - UDP hole-punching primitives
 - CLI for probing
+- client integration via `DiscoverCandidate` and `DirectDialer.dialWithPunch`
+- relay-coordinated signaling for candidate exchange
 
 What is still missing:
 
-- client integration
-- coordination and signaling
-- broader real-world network validation
+- broader real-world network validation across diverse NAT types
 - evidence that direct mode succeeds often enough to change product claims
 
 ### `cmd/bore-admin`
@@ -376,7 +382,7 @@ Reality check:
 
 ### Phase 1 — direct-path integration
 
-Status: active, highest-leverage unfinished runtime lane
+Status: implementation complete, pending real-world NAT validation
 
 Checklist:
 
@@ -386,16 +392,18 @@ Checklist:
 - [x] selector with direct-first and relay-fallback logic
 - [x] rendezvous flow wired to `Dialer`
 - [x] define the relay-coordinated peer-candidate exchange needed for direct attempts
-- [ ] publish and consume direct-path candidate data during rendezvous
-- [ ] wire `internal/punchthrough/` STUN and NAT discovery into direct dial attempts
-- [ ] add UDP reliability/framing semantics suitable for encrypted file transfer
+- [x] publish and consume direct-path candidate data during rendezvous
+- [x] wire `internal/punchthrough/` STUN and NAT discovery into direct dial attempts
+- [x] add UDP reliability/framing semantics suitable for encrypted file transfer
 - [x] record why direct mode fell back so tests and operators can explain the downgrade
 - [x] add deterministic verification for direct-path success and relay fallback behavior
 - [x] prove the selector still lands on the existing relay path cleanly when direct mode is impossible
 
 Exit criteria:
 
-- direct mode is real and verified, or the docs still call relay the only shipped path
+- direct mode implementation is complete with STUN discovery, signaling, hole-punching, and reliability framing
+- relay remains the default and only production-verified path until real-world NAT testing validates direct mode
+- `--direct` flag exists for opt-in experimentation
 
 ### Phase 2 — transfer durability
 
@@ -598,10 +606,10 @@ If you are choosing the next substantive feature lane, pick **Phase 1 direct-pat
 1. ~~define the candidate-exchange shape in rendezvous~~ done: `Candidate`, `CandidatePair` types exist
 2. ~~make selector fallback reasons explicit~~ done: `SelectionResult` with `Method`, `FallbackReason`, `DirectErr`
 3. ~~prove the direct/fallback behavior with deterministic tests~~ done: unit + integration coverage
-4. implement relay-coordinated signaling to publish/consume candidate data during rendezvous
-5. wire STUN/NAT discovery into direct attempt setup using `Candidate`
-6. add UDP reliability/framing layer over the direct transport
-7. only then widen product claims beyond relay-first
+4. ~~implement relay-coordinated signaling to publish/consume candidate data during rendezvous~~ done: `/signal` endpoint + `ExchangeCandidates` client
+5. ~~wire STUN/NAT discovery into direct attempt setup using `Candidate`~~ done: `DiscoverCandidate` + `Selector.EnableDirect`
+6. ~~add UDP reliability/framing layer over the direct transport~~ done: `ReliableConn` with retransmit, ACK, FIN
+7. real-world NAT validation before widening product claims beyond relay-first
 
 ### If the goal is cleanup instead of features
 

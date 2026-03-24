@@ -36,6 +36,9 @@ type Server struct {
 
 	mu      sync.Mutex
 	pending map[string]*peerState
+
+	sigMu   sync.Mutex
+	signals map[string]*signalState
 }
 
 // peerState tracks a room where the sender is waiting for a receiver.
@@ -43,6 +46,14 @@ type peerState struct {
 	room   *room.Room
 	recvCh chan *websocket.Conn // receiver delivers its conn here
 	doneCh chan struct{}        // closed when relay finishes
+}
+
+// signalState tracks the signaling exchange for a room.
+// Each peer connects to /signal?room=ID&role=sender|receiver to exchange
+// candidate data for direct transport evaluation.
+type signalState struct {
+	senderMsg  chan []byte
+	receiverMsg chan []byte
 }
 
 // ServerConfig configures the relay server.
@@ -63,12 +74,14 @@ func NewServer(cfg ServerConfig) *Server {
 		logger:   cfg.Logger,
 		started:  time.Now(),
 		pending:  make(map[string]*peerState),
+		signals:  make(map[string]*signalState),
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/status", s.handleStatus)
 	mux.HandleFunc("/ws", s.handleWS)
+	mux.HandleFunc("/signal", s.handleSignal)
 	mux.Handle("/", webui.NewHandler())
 
 	s.httpSrv = &http.Server{
@@ -286,5 +299,95 @@ func (s *Server) handleReceiver(w http.ResponseWriter, r *http.Request, roomID s
 	select {
 	case <-ps.doneCh:
 	case <-r.Context().Done():
+	}
+}
+
+// handleSignal implements the relay-coordinated candidate exchange.
+//
+// Each peer connects via WebSocket to /signal?room=ROOM_ID&role=sender|receiver
+// and sends a single JSON signaling message containing their direct-path
+// candidate. The relay buffers both messages and forwards the sender's
+// candidate to the receiver and vice versa.
+//
+// The relay does not inspect the candidate content beyond parsing the JSON
+// envelope — it is a passthrough for signaling data.
+func (s *Server) handleSignal(w http.ResponseWriter, r *http.Request) {
+	roomID := r.URL.Query().Get("room")
+	role := r.URL.Query().Get("role")
+
+	if roomID == "" || (role != "sender" && role != "receiver") {
+		http.Error(w, "missing room or invalid role", http.StatusBadRequest)
+		return
+	}
+
+	conn, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		s.logger.Error("signal: websocket accept failed", "room", roomID, "role", role, "error", err)
+		return
+	}
+	defer conn.Close(websocket.StatusNormalClosure, "done")
+
+	conn.SetReadLimit(64 * 1024)
+
+	// Get or create the signal state for this room.
+	s.sigMu.Lock()
+	ss, ok := s.signals[roomID]
+	if !ok {
+		ss = &signalState{
+			senderMsg:   make(chan []byte, 1),
+			receiverMsg: make(chan []byte, 1),
+		}
+		s.signals[roomID] = ss
+	}
+	s.sigMu.Unlock()
+
+	// Cleanup signal state after a timeout.
+	defer func() {
+		s.sigMu.Lock()
+		// Only delete if this is still the same signal state.
+		if current, exists := s.signals[roomID]; exists && current == ss {
+			delete(s.signals, roomID)
+		}
+		s.sigMu.Unlock()
+	}()
+
+	// Read this peer's candidate message.
+	_, data, err := conn.Read(r.Context())
+	if err != nil {
+		s.logger.Error("signal: read failed", "room", roomID, "role", role, "error", err)
+		return
+	}
+
+	s.logger.Info("signal: received candidate", "room", roomID, "role", role)
+
+	// Determine which channels to use based on role.
+	var myCh, peerCh chan []byte
+	if role == "sender" {
+		myCh = ss.senderMsg
+		peerCh = ss.receiverMsg
+	} else {
+		myCh = ss.receiverMsg
+		peerCh = ss.senderMsg
+	}
+
+	// Publish our candidate.
+	select {
+	case myCh <- data:
+	default:
+		// Channel full — another connection for the same role/room.
+		s.logger.Warn("signal: duplicate role connection", "room", roomID, "role", role)
+	}
+
+	// Wait for the peer's candidate.
+	select {
+	case peerData := <-peerCh:
+		// Forward the peer's candidate to this peer.
+		if err := conn.Write(r.Context(), websocket.MessageText, peerData); err != nil {
+			s.logger.Error("signal: write failed", "room", roomID, "role", role, "error", err)
+		}
+	case <-r.Context().Done():
+		s.logger.Info("signal: peer did not arrive", "room", roomID, "role", role)
+	case <-time.After(30 * time.Second):
+		s.logger.Info("signal: timeout waiting for peer", "room", roomID, "role", role)
 	}
 }

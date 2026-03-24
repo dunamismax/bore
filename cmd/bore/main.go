@@ -129,8 +129,9 @@ func cmdSend(args []string) error {
 	fs := flag.NewFlagSet("send", flag.ContinueOnError)
 	relayFlag := fs.String("relay", "", "relay server URL (default: "+rendezvous.DefaultRelayURL+")")
 	wordsFlag := fs.Int("words", code.DefaultWords, "number of code words (2-5)")
+	directFlag := fs.Bool("direct", false, "attempt direct P2P transport via STUN/hole-punching")
 
-	path, err := parsePrimaryArg(fs, args, "bore send <path> [--relay URL] [--words N]")
+	path, err := parsePrimaryArg(fs, args, "bore send <path> [--relay URL] [--words N] [--direct]")
 	if err != nil {
 		return err
 	}
@@ -164,7 +165,11 @@ func cmdSend(args []string) error {
 
 	fmt.Fprintf(os.Stderr, "bore send -- %s (%d bytes)\n\n", filename, len(data))
 
-	dialer := &transport.Selector{RelayURL: relayURL}
+	dialer := &transport.Selector{
+		RelayURL:     relayURL,
+		EnableDirect: *directFlag,
+		Role:         "sender",
+	}
 
 	result, err := rendezvous.SendWithCodeCallback(
 		context.Background(),
@@ -197,8 +202,9 @@ func cmdReceive(args []string) error {
 	fs := flag.NewFlagSet("receive", flag.ContinueOnError)
 	relayFlag := fs.String("relay", "", "relay server URL (default: "+rendezvous.DefaultRelayURL+")")
 	outputFlag := fs.String("output", ".", "output directory")
+	directFlag := fs.Bool("direct", false, "attempt direct P2P transport via STUN/hole-punching")
 
-	codeStr, err := parsePrimaryArg(fs, args, "bore receive <code> [--relay URL] [--output DIR]")
+	codeStr, err := parsePrimaryArg(fs, args, "bore receive <code> [--relay URL] [--output DIR] [--direct]")
 	if err != nil {
 		return err
 	}
@@ -212,7 +218,11 @@ func cmdReceive(args []string) error {
 	fmt.Fprintln(os.Stderr, "bore receive -- connecting...")
 	fmt.Fprintln(os.Stderr)
 
-	dialer := &transport.Selector{RelayURL: relayURL}
+	dialer := &transport.Selector{
+		RelayURL:     relayURL,
+		EnableDirect: *directFlag,
+		Role:         "receiver",
+	}
 
 	result, err := rendezvous.Receive(context.Background(), codeStr, dialer, relayURL)
 	if err != nil {
@@ -274,8 +284,8 @@ func printHelp() {
 	fmt.Println("bore -- privacy-first file transfer")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  bore send <path> [--relay URL] [--words N]")
-	fmt.Println("  bore receive <code> [--relay URL] [--output DIR]")
+	fmt.Println("  bore send <path> [--relay URL] [--words N] [--direct]")
+	fmt.Println("  bore receive <code> [--relay URL] [--output DIR] [--direct]")
 	fmt.Println("  bore status")
 	fmt.Println("  bore components")
 	fmt.Println()
@@ -285,10 +295,12 @@ func printHelp() {
 	fmt.Println("Send flags:")
 	fmt.Println("  --relay URL      relay server URL (default: http://localhost:8080)")
 	fmt.Println("  --words N        number of code words, 2-5 (default: 3)")
+	fmt.Println("  --direct         attempt direct P2P transport via STUN/hole-punching")
 	fmt.Println()
 	fmt.Println("Receive flags:")
 	fmt.Println("  --relay URL      relay server URL (default: http://localhost:8080)")
 	fmt.Println("  --output DIR     output directory (default: current directory)")
+	fmt.Println("  --direct         attempt direct P2P transport via STUN/hole-punching")
 	fmt.Println()
 	fmt.Println("Environment:")
 	fmt.Println("  BORE_LOG=debug   enable debug logging")

@@ -3,8 +3,11 @@ package transport
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"time"
+
+	"github.com/dunamismax/bore/internal/punchthrough/punch"
 )
 
 // DefaultDirectTimeout is the default timeout for establishing a direct
@@ -13,12 +16,27 @@ const DefaultDirectTimeout = 3 * time.Second
 
 // DirectDialer implements [Dialer] for direct peer-to-peer UDP connections.
 //
-// This is a stub implementation. It establishes a connected UDP socket to
-// RemoteAddr but does NOT yet perform NAT hole-punching or relay-coordinated
-// signaling. Those pieces will be integrated in later phases.
+// When CandidatePair is set and the NAT combination is favorable, it runs
+// UDP hole-punching via the punchthrough engine. On success, the resulting
+// socket is wrapped in a [ReliableConn] to provide the stream semantics
+// required by the Noise handshake and transfer engine.
+//
+// When CandidatePair is nil, it falls back to a simple connected UDP socket
+// to RemoteAddr (which will typically fail unless both peers are on the same
+// LAN or have public IPs).
 type DirectDialer struct {
 	// RemoteAddr is the target peer's address in "host:port" form.
+	// Used as a fallback when CandidatePair is nil.
 	RemoteAddr string
+
+	// CandidatePair holds both peers' discovered candidates from
+	// the relay-coordinated signaling exchange.
+	CandidatePair *CandidatePair
+
+	// PunchConn is a pre-bound UDP socket to use for hole-punching.
+	// Should be the same socket used during STUN probing to preserve
+	// NAT bindings. If nil, a new socket is created.
+	PunchConn *net.UDPConn
 
 	// Timeout is the deadline for establishing the UDP connection.
 	// Zero uses [DefaultDirectTimeout].
@@ -26,12 +44,8 @@ type DirectDialer struct {
 }
 
 // DialSender establishes a direct UDP connection as the sender.
-//
-// TODO: integrate relay-coordinated signaling to exchange peer addresses
-// TODO: integrate NAT hole-punching from internal/punchthrough before dialing
-// TODO: implement a reliability layer or framing protocol over UDP
 func (d *DirectDialer) DialSender(ctx context.Context) (string, Conn, error) {
-	conn, err := d.dialUDP(ctx)
+	conn, err := d.dialDirect(ctx)
 	if err != nil {
 		return "", nil, fmt.Errorf("direct dial sender: %w", err)
 	}
@@ -40,24 +54,18 @@ func (d *DirectDialer) DialSender(ctx context.Context) (string, Conn, error) {
 }
 
 // DialReceiver establishes a direct UDP connection as the receiver.
-//
-// TODO: integrate relay-coordinated signaling to exchange peer addresses
-// TODO: integrate NAT hole-punching from internal/punchthrough before dialing
-// TODO: implement a reliability layer or framing protocol over UDP
 func (d *DirectDialer) DialReceiver(ctx context.Context, _ string) (Conn, error) {
-	conn, err := d.dialUDP(ctx)
+	conn, err := d.dialDirect(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("direct dial receiver: %w", err)
 	}
 	return conn, nil
 }
 
-// dialUDP resolves the remote address and creates a connected UDP socket.
-func (d *DirectDialer) dialUDP(ctx context.Context) (Conn, error) {
-	if d.RemoteAddr == "" {
-		return nil, fmt.Errorf("no remote address configured for direct transport")
-	}
-
+// dialDirect attempts to establish a direct connection, first trying
+// hole-punching if a CandidatePair is available, otherwise falling back
+// to a simple UDP dial.
+func (d *DirectDialer) dialDirect(ctx context.Context) (Conn, error) {
 	timeout := d.Timeout
 	if timeout == 0 {
 		timeout = DefaultDirectTimeout
@@ -66,8 +74,83 @@ func (d *DirectDialer) dialUDP(ctx context.Context) (Conn, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// TODO: before dialing, run STUN probe and NAT hole-punching
-	// from internal/punchthrough to establish mutual reachability.
+	// If we have a candidate pair, attempt hole-punching.
+	if d.CandidatePair != nil {
+		return d.dialWithPunch(ctx)
+	}
+
+	// Fallback: simple connected UDP socket.
+	return d.dialUDP(ctx)
+}
+
+// dialWithPunch uses the punchthrough engine to establish a hole-punched
+// UDP connection, then wraps it in a ReliableConn.
+func (d *DirectDialer) dialWithPunch(ctx context.Context) (Conn, error) {
+	pair := d.CandidatePair
+
+	// Validate the remote candidate.
+	if err := pair.Remote.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid remote candidate: %w", err)
+	}
+
+	// Parse the remote's public address.
+	peerAddr, err := net.ResolveUDPAddr("udp4", pair.Remote.PublicAddr)
+	if err != nil {
+		return nil, fmt.Errorf("resolve peer addr: %w", err)
+	}
+
+	// Use the pre-bound socket or create one.
+	conn := d.PunchConn
+	if conn == nil {
+		conn, err = net.ListenUDP("udp4", nil)
+		if err != nil {
+			return nil, fmt.Errorf("bind UDP: %w", err)
+		}
+	}
+
+	slog.Info("direct: attempting hole-punch",
+		"peer", peerAddr.String(),
+		"local_nat", pair.Local.NATType.String(),
+		"remote_nat", pair.Remote.NATType.String(),
+	)
+
+	result, err := punch.Attempt(ctx, conn, peerAddr,
+		pair.Local.NATType, pair.Remote.NATType, &punch.Config{
+			Timeout:       d.effectiveTimeout(),
+			MaxAttempts:   10,
+			RetryInterval: 200 * time.Millisecond,
+		})
+	if err != nil {
+		return nil, fmt.Errorf("hole-punch: %w", err)
+	}
+
+	if !result.Success {
+		return nil, fmt.Errorf("hole-punch did not establish bidirectional communication")
+	}
+
+	slog.Info("direct: hole-punch succeeded",
+		"peer", peerAddr.String(),
+		"rtt", result.RTT,
+		"attempts", result.Attempts,
+	)
+
+	// Connect the UDP socket to the peer for stream-like usage.
+	// We create a new connected socket to the punched-through address.
+	connectedConn, err := net.DialUDP("udp4", conn.LocalAddr().(*net.UDPAddr), peerAddr)
+	if err != nil {
+		return nil, fmt.Errorf("connect UDP after punch: %w", err)
+	}
+
+	// Wrap in the reliability layer.
+	return NewReliableConn(connectedConn), nil
+}
+
+// dialUDP resolves the remote address and creates a connected UDP socket.
+// This is the fallback path when no CandidatePair is available.
+func (d *DirectDialer) dialUDP(ctx context.Context) (Conn, error) {
+	if d.RemoteAddr == "" {
+		return nil, fmt.Errorf("no remote address configured for direct transport")
+	}
 
 	dialer := &net.Dialer{}
 	netConn, err := dialer.DialContext(ctx, "udp", d.RemoteAddr)
@@ -75,17 +158,12 @@ func (d *DirectDialer) dialUDP(ctx context.Context) (Conn, error) {
 		return nil, fmt.Errorf("udp dial %s: %w", d.RemoteAddr, err)
 	}
 
-	return &udpConn{conn: netConn}, nil
+	return NewReliableConn(netConn), nil
 }
 
-// udpConn wraps a net.Conn (connected UDP socket) to satisfy [Conn].
-//
-// TODO: add a reliability/framing layer — raw UDP is not sufficient for
-// the Noise handshake or chunked file transfer without retransmission.
-type udpConn struct {
-	conn net.Conn
+func (d *DirectDialer) effectiveTimeout() time.Duration {
+	if d.Timeout > 0 {
+		return d.Timeout
+	}
+	return DefaultDirectTimeout
 }
-
-func (c *udpConn) Read(p []byte) (int, error)  { return c.conn.Read(p) }
-func (c *udpConn) Write(p []byte) (int, error) { return c.conn.Write(p) }
-func (c *udpConn) Close() error                { return c.conn.Close() }

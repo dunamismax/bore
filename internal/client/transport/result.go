@@ -45,6 +45,22 @@ const (
 
 	// FallbackTimeout means the direct dial attempt exceeded its timeout.
 	FallbackTimeout
+
+	// FallbackSTUNFailed means STUN discovery failed, so no candidate
+	// was available for the direct transport attempt.
+	FallbackSTUNFailed
+
+	// FallbackNATUnfavorable means the NAT combination between the two
+	// peers does not support hole-punching (e.g., both symmetric).
+	FallbackNATUnfavorable
+
+	// FallbackPunchFailed means the UDP hole-punch attempt did not
+	// establish bidirectional communication within the timeout.
+	FallbackPunchFailed
+
+	// FallbackSignalingFailed means the candidate exchange through
+	// the relay failed before a direct attempt could be evaluated.
+	FallbackSignalingFailed
 )
 
 // String returns a human-readable description of the fallback reason.
@@ -58,6 +74,14 @@ func (r FallbackReason) String() string {
 		return "direct dial failed"
 	case FallbackTimeout:
 		return "direct dial timed out"
+	case FallbackSTUNFailed:
+		return "STUN discovery failed"
+	case FallbackNATUnfavorable:
+		return "NAT combination unfavorable for direct"
+	case FallbackPunchFailed:
+		return "hole-punch attempt failed"
+	case FallbackSignalingFailed:
+		return "candidate signaling failed"
 	default:
 		return "unknown"
 	}

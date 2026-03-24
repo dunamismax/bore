@@ -30,6 +30,10 @@ func TestFallbackReasonString(t *testing.T) {
 		{FallbackNoDirectAddr, "no direct address available"},
 		{FallbackDialFailed, "direct dial failed"},
 		{FallbackTimeout, "direct dial timed out"},
+		{FallbackSTUNFailed, "STUN discovery failed"},
+		{FallbackNATUnfavorable, "NAT combination unfavorable for direct"},
+		{FallbackPunchFailed, "hole-punch attempt failed"},
+		{FallbackSignalingFailed, "candidate signaling failed"},
 	}
 	for _, tt := range tests {
 		if got := tt.r.String(); got != tt.want {

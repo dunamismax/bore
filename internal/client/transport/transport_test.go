@@ -106,8 +106,8 @@ var _ Dialer = (*Selector)(nil)
 // Verify wsConn satisfies Conn at compile time.
 var _ Conn = (*wsConn)(nil)
 
-// Verify udpConn satisfies Conn at compile time.
-var _ Conn = (*udpConn)(nil)
+// Verify ReliableConn satisfies Conn at compile time.
+var _ Conn = (*ReliableConn)(nil)
 
 // ---------------------------------------------------------------------------
 // Conn interface behavioral test with a mock

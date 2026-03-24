@@ -42,7 +42,7 @@ bore currently consists of five tracked components:
 4. **Punchthrough (`cmd/punchthrough` + `internal/punchthrough/`)** contains STUN and UDP hole-punching primitives for a future direct path.
 5. **bore-admin (`cmd/bore-admin`)** is a minimal operator CLI that queries relay status but does not participate in transfer runtime behavior.
 
-The current verified path is **relay-based transfer**. Direct transport is still a planned integration step, not current runtime behavior.
+The current default and production-verified path is **relay-based transfer**. Direct transport is implemented and opt-in via `--direct` but has not yet been validated across diverse real-world NAT environments.
 
 ---
 
@@ -176,13 +176,16 @@ Owns:
 
 - transport abstraction: `Conn` and `Dialer`
 - `RelayDialer`: WebSocket relay transport
-- `DirectDialer`: stub UDP direct transport
-- `Selector`: tries direct first, falls back to relay
+- `DirectDialer`: UDP direct transport with hole-punch integration
+- `Selector`: tries direct first (when `EnableDirect` is set), falls back to relay
 - `SelectionResult`: records which transport was used and why, including `Method`, `FallbackReason`, and `DirectErr`
 - `Candidate` and `CandidatePair`: peer address and NAT type exchange types for relay-coordinated direct-path signaling
+- `ExchangeCandidates`: relay-coordinated signaling client for candidate exchange via `/signal` WebSocket endpoint
+- `DiscoverCandidate`: STUN discovery wrapper that produces a `Candidate` from a probe
+- `ReliableConn`: UDP reliability/framing layer with sequence numbers, ACK, retransmit, and FIN — wraps raw UDP into an `io.ReadWriteCloser` suitable for the Noise handshake and transfer engine
 - adapting transport IO to what the crypto and engine layers expect
 
-The CLI constructs a `Selector` dialer, which currently always falls back to relay because no signaling provides a direct address yet. After each dial, `Selector.LastSelection` records the transport decision and fallback reason. When direct transport becomes viable, the `Selector` should automatically attempt it first using `Candidate` data exchanged through the relay signaling channel.
+The CLI constructs a `Selector` dialer. With `--direct`, the selector runs STUN discovery, exchanges candidates through the relay's `/signal` endpoint, evaluates NAT feasibility, and attempts hole-punching before falling back to relay. Without `--direct`, the selector goes straight to relay. After each dial, `Selector.LastSelection` records the transport decision and fallback reason with expanded reasons including `FallbackSTUNFailed`, `FallbackNATUnfavorable`, `FallbackPunchFailed`, and `FallbackSignalingFailed`.
 
 ---
 
@@ -229,13 +232,14 @@ Owns:
 - WebSocket accept/upgrade path
 - sender and receiver connection handling
 - frame relay between paired peers
+- `/signal` WebSocket endpoint for relay-coordinated candidate exchange (direct-path signaling)
 - lightweight `/healthz` and `/status` operator endpoints
 - same-origin serving for the embedded static web UI
 
 Design constraints:
 
 - do not decrypt payloads
-- do not reinterpret the encrypted application protocol
+- do not reinterpret the encrypted application protocol or candidate content
 - keep server state minimal and disposable
 
 Current limitations:
@@ -311,7 +315,7 @@ Design constraints:
 
 ## Punchthrough Architecture (`cmd/punchthrough` + `internal/punchthrough/`)
 
-This component is groundwork for a future direct path. It is not yet integrated into the client runtime.
+This component provides the NAT discovery and hole-punching primitives used by the client's direct transport path. It is integrated into the client runtime via `transport.DiscoverCandidate` and `transport.DirectDialer`.
 
 ### Package responsibilities
 
@@ -337,9 +341,11 @@ Owns:
 
 - operator/dev CLI entry point for probing and testing the NAT tooling
 
-Near-term architectural goal:
+Current integration:
 
-- feed punchthrough results into the client's transport selection so the client can attempt direct transport before falling back to relay
+- STUN probe results feed into `transport.Candidate` via `DiscoverCandidate`
+- hole-punch engine is invoked by `DirectDialer` when a `CandidatePair` with favorable NAT types is present
+- the `Selector` orchestrates the full flow: STUN → signaling → NAT check → punch → fallback
 
 ---
 
@@ -450,7 +456,7 @@ This selection logic is planned, not current behavior.
 
 ## Open Architectural Work
 
-- integrate punchthrough into client transport selection
+- validate direct transport across diverse real-world NAT environments before promoting beyond opt-in
 - add resumable transfer state and resume protocol rules
 - harden relay operations with rate limiting and metrics
 - decide how much operator surface `bore-admin` actually needs beyond relay status polling
