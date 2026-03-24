@@ -1,4 +1,4 @@
-// Resume state management for bore's transfer durability.
+// Package engine manages client-side transfer lifecycle, including resume state.
 //
 // When a receiver is interrupted mid-transfer, it persists enough metadata to
 // resume on the next connection:

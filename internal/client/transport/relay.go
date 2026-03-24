@@ -161,5 +161,3 @@ func BuildWSURL(relayURL, roomID string) (string, error) {
 
 	return u.String(), nil
 }
-
-

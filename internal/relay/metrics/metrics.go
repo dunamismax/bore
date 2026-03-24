@@ -24,7 +24,7 @@ type Counters struct {
 	roomsRelayed atomic.Int64
 
 	// Transfers
-	bytesRelayed atomic.Int64
+	bytesRelayed  atomic.Int64
 	framesRelayed atomic.Int64
 
 	// Rate limiting
@@ -55,26 +55,26 @@ func (c *Counters) RoomJoined()   { c.roomsJoined.Add(1) }
 func (c *Counters) RoomExpired()  { c.roomsExpired.Add(1) }
 func (c *Counters) RoomRelayed()  { c.roomsRelayed.Add(1) }
 
-func (c *Counters) BytesRelayed(n int64)  { c.bytesRelayed.Add(n) }
-func (c *Counters) FrameRelayed()         { c.framesRelayed.Add(1) }
-func (c *Counters) RateLimitHit()         { c.rateLimitHits.Add(1) }
-func (c *Counters) WSError()              { c.wsErrors.Add(1) }
-func (c *Counters) SignalExchange()       { c.signalExchanges.Add(1) }
+func (c *Counters) BytesRelayed(n int64) { c.bytesRelayed.Add(n) }
+func (c *Counters) FrameRelayed()        { c.framesRelayed.Add(1) }
+func (c *Counters) RateLimitHit()        { c.rateLimitHits.Add(1) }
+func (c *Counters) WSError()             { c.wsErrors.Add(1) }
+func (c *Counters) SignalExchange()      { c.signalExchanges.Add(1) }
 
 // Snapshot returns a JSON-serializable point-in-time view of all counters.
 type Snapshot struct {
-	UptimeSeconds         int64 `json:"uptimeSeconds"`
-	ActiveWSConnections   int64 `json:"activeWsConnections"`
-	TotalWSConnections    int64 `json:"totalWsConnections"`
-	RoomsCreated          int64 `json:"roomsCreated"`
-	RoomsJoined           int64 `json:"roomsJoined"`
-	RoomsExpired          int64 `json:"roomsExpired"`
-	RoomsRelayed          int64 `json:"roomsRelayed"`
-	BytesRelayed          int64 `json:"bytesRelayed"`
-	FramesRelayed         int64 `json:"framesRelayed"`
-	RateLimitHits         int64 `json:"rateLimitHits"`
-	WSErrors              int64 `json:"wsErrors"`
-	SignalExchanges       int64 `json:"signalExchanges"`
+	UptimeSeconds       int64 `json:"uptimeSeconds"`
+	ActiveWSConnections int64 `json:"activeWsConnections"`
+	TotalWSConnections  int64 `json:"totalWsConnections"`
+	RoomsCreated        int64 `json:"roomsCreated"`
+	RoomsJoined         int64 `json:"roomsJoined"`
+	RoomsExpired        int64 `json:"roomsExpired"`
+	RoomsRelayed        int64 `json:"roomsRelayed"`
+	BytesRelayed        int64 `json:"bytesRelayed"`
+	FramesRelayed       int64 `json:"framesRelayed"`
+	RateLimitHits       int64 `json:"rateLimitHits"`
+	WSErrors            int64 `json:"wsErrors"`
+	SignalExchanges     int64 `json:"signalExchanges"`
 }
 
 // Snapshot returns the current counter values.

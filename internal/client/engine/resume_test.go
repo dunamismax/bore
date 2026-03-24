@@ -345,7 +345,7 @@ func TestReceiveFileFresh(t *testing.T) {
 func TestReceiveFileResume(t *testing.T) {
 	// Simulate: first transfer was interrupted after 1 chunk of a 2-chunk file.
 	// Second transfer should resume from chunk 1.
-	chunkSize := uint32(16) // small chunks for testing
+	chunkSize := uint32(16)      // small chunks for testing
 	fileData := make([]byte, 30) // 2 chunks at 16 bytes each
 	for i := range fileData {
 		fileData[i] = byte('A' + (i % 26))

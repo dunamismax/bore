@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
@@ -259,9 +258,4 @@ func TestSignal_Cleanup(t *testing.T) {
 	if exists {
 		t.Error("signal state was not cleaned up after exchange")
 	}
-}
-
-// Ensure no compile-time conflict between signal_test.go and transport_test.go helpers.
-func signalTestServer(t *testing.T) (*Server, *httptest.Server) {
-	return testServer(t)
 }

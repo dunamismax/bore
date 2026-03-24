@@ -1,3 +1,4 @@
+// Package webui serves the embedded relay operator frontend.
 package webui
 
 import (

@@ -51,9 +51,6 @@ const (
 	defaultRetransmitInterval = 200 * time.Millisecond
 	defaultRetransmitMax      = 20
 	defaultReadTimeout        = 30 * time.Second
-
-	// send/recv window size
-	windowSize = 64
 )
 
 // Flags

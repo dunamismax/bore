@@ -256,7 +256,7 @@ func TestSelectorRecordsFallbackDialFailed(t *testing.T) {
 	// UDP is connectionless, so we need a genuinely invalid address.
 	s := &Selector{
 		RelayURL:      "http://127.0.0.1:1",
-		DirectAddr:    "",                     // empty triggers no-addr path
+		DirectAddr:    "", // empty triggers no-addr path
 		DirectTimeout: 100 * time.Millisecond,
 	}
 

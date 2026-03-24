@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatBytes, formatDuration, formatLocalTimestamp } from "@/lib/format";
-import { type RelayStatus, fetchRelayStatus } from "@/lib/relay-status";
+import { fetchRelayStatus, type RelayStatus } from "@/lib/relay-status";
 import { rootRoute } from "./root";
 
 function roomFill(value: number, maxRooms: number): string {
@@ -14,15 +14,7 @@ function roomFill(value: number, maxRooms: number): string {
   return `${Math.round(percent)}%`;
 }
 
-function MetricCard({
-  label,
-  value,
-  note,
-}: {
-  label: string;
-  value: string;
-  note: string;
-}) {
+function MetricCard({ label, value, note }: { label: string; value: string; note: string }) {
   return (
     <Card className="animate-rise-in">
       <CardContent className="p-4">

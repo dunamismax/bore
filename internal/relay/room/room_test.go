@@ -53,8 +53,8 @@ func TestGenerateID_URLSafe(t *testing.T) {
 			t.Fatalf("GenerateID: %v", err)
 		}
 		for _, c := range id {
-			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-				(c >= '0' && c <= '9') || c == '-' || c == '_') {
+			if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') &&
+				(c < '0' || c > '9') && c != '-' && c != '_' {
 				t.Errorf("non-URL-safe character %q in ID %q", string(c), id)
 			}
 		}

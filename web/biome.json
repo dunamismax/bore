@@ -8,6 +8,14 @@
     "indentStyle": "space",
     "lineWidth": 100
   },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    },
+    "linter": {
+      "enabled": true
+    }
+  },
   "linter": {
     "enabled": true,
     "rules": {
@@ -21,6 +29,16 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["**/*.css"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noUnknownAtRules": "off"
+          }
+        }
+      }
+    },
     {
       "includes": ["src/components/ui/**"],
       "linter": { "enabled": false },
