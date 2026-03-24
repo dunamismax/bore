@@ -525,8 +525,8 @@ Status: active foundation, unfinished standards
 Checklist:
 
 - [x] root `.github/workflows/ci.yml` runs component verification from the consolidated module layout
-- [ ] add `golangci-lint run` to CI
-- [ ] add `govulncheck ./...` to CI
+- [x] add `golangci-lint run` to CI
+- [x] add `govulncheck ./...` to CI
 - [ ] cache Bun dependencies for the `web/` job
 - [ ] add fuzz targets for rendezvous code and transfer frame parsing
 - [ ] add a root task runner only if the command surface grows large enough to justify it
