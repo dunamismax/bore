@@ -1,5 +1,7 @@
 # bore
 
+[![CI](https://github.com/dunamismax/bore/actions/workflows/ci.yml/badge.svg)](https://github.com/dunamismax/bore/actions/workflows/ci.yml) [![Go](https://img.shields.io/badge/Go-1.26.1-00ADD8.svg)](go.mod) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **Privacy-first file transfer with a real browser surface and a payload-blind relay.**
 
 bore moves a file between two machines with a short human-readable rendezvous code. The verified transfer path today is relay-based: the relay pairs peers and forwards encrypted bytes, while the file data stays end-to-end encrypted between sender and receiver.
