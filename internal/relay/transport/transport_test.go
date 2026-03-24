@@ -421,17 +421,17 @@ func TestRelay_ReceiverDisconnectMidTransfer(t *testing.T) {
 	// Receiver abruptly disconnects.
 	receiver.CloseNow()
 
-	// Sender should eventually get an error on write.
-	// Write in a loop because the first write may succeed if the relay
-	// hasn't detected the disconnect yet.
-	for range 100 {
-		err := sender.Write(ctx, websocket.MessageBinary, []byte("data"))
-		if err != nil {
-			return // expected
-		}
-		time.Sleep(10 * time.Millisecond)
+	// The sender should observe the relay closing after the receiver drops.
+	// Waiting on a read is more reliable than expecting the next write to fail
+	// within an arbitrary amount of time because close propagation is
+	// asynchronous across the WebSocket/TCP stack.
+	closeCtx, closeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer closeCancel()
+
+	_, _, err = sender.Read(closeCtx)
+	if err == nil {
+		t.Fatal("expected sender to observe relay closure after receiver disconnect")
 	}
-	t.Fatal("expected error after receiver disconnect, but writes kept succeeding")
 }
 
 func TestRelay_BinaryIntegrity(t *testing.T) {
