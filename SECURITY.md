@@ -71,17 +71,21 @@ The relay should not know:
 
 ### Current relay guardrails
 
-Implemented relay guardrails are modest but real:
+Implemented relay guardrails:
 
 - waiting rooms expire after the configured TTL
 - concurrent room count is bounded by registry configuration
-- WebSocket message size is capped
+- WebSocket message size is capped at 64 MB per frame
+- per-IP rate limiting on `/ws` and `/signal` endpoints (default: 30 requests/minute)
+- explicit HTTP server timeouts: read (30s), write (30s), idle (120s), read header (10s)
+- max header size limited to 1 MB
+- operational metrics tracked via atomic counters and exposed at `/metrics`
 
-These are baseline resource controls, not a substitute for proper abuse protection.
+These controls provide meaningful abuse resistance for the relay's threat profile.
 
 ### Operator endpoints and browser surface
 
-The relay exposes `/healthz` and `/status` for operator visibility and serves a same-origin browser surface at `/` and `/ops/relay`.
+The relay exposes `/healthz`, `/status`, and `/metrics` for operator visibility and serves a same-origin browser surface at `/` and `/ops/relay`.
 Those surfaces are intended to reveal only aggregate service state such as:
 
 - process health
@@ -132,16 +136,20 @@ bore does not currently aim to provide:
 
 ## Known gaps and risks
 
-### Relay hardening is incomplete
+### Relay hardening
 
-Not yet implemented:
+Implemented:
 
-- rate limiting
-- metrics endpoint
-- stronger operator controls and quotas
-- longer-term relay observation tooling
+- per-IP rate limiting on WebSocket and signaling endpoints
+- explicit HTTP server timeouts
+- operational metrics endpoint at `/metrics`
+- room expiry tracking via callback
+- deployment artifacts (Dockerfile, systemd unit)
 
-This means the relay should be treated as functional but not yet production-hardened against abuse or observability requirements.
+Still not implemented:
+
+- longer-term relay observation tooling and alerting
+- external security audit
 
 ### Browser surface is intentionally thin
 
@@ -216,7 +224,7 @@ If you discover a security vulnerability in bore, report it responsibly:
 | Threat model documentation | Present |
 | Local tests for client and relay packages | Present |
 | Direct transport security review | Deferred until direct transport is integrated |
-| Relay abuse controls | TODO |
+| Relay abuse controls | Implemented (rate limiting, timeouts, metrics) |
 | External review / audit | TODO |
 
 For cryptographic implementation detail, see [`docs/crypto-design.md`](docs/crypto-design.md). For the broader threat model, see [`docs/threat-model.md`](docs/threat-model.md).

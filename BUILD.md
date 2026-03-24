@@ -45,7 +45,7 @@ Treat this document like a live program, not a retrospective. Do not let the exi
 
 1. ~~make direct-path transport real and measurable~~ (Phase 1 done, pending real-world validation)
 2. ~~make single-file transfer durable enough to resume cleanly~~ (Phase 2 done)
-3. harden relay operations and verification discipline
+3. ~~harden relay operations and verification discipline~~ (Phase 3 done)
 4. deepen operator tooling only where runtime reality justifies it
 
 ---
@@ -58,6 +58,8 @@ bore currently ships a relay-based encrypted file transfer path plus a real in-r
 - `cmd/relay` plus `internal/relay/` for the WebSocket relay, room registry, operator endpoints, and embedded web UI
 - `cmd/punchthrough` plus `internal/punchthrough/` for NAT probing and hole-punching groundwork
 - `cmd/bore-admin` for minimal operator CLI status polling
+- `internal/relay/ratelimit/` for per-IP token bucket rate limiting
+- `internal/relay/metrics/` for atomic operator-facing counters
 - `web/` for the Bun + React + Vite + TypeScript browser surface
 
 ### What is working today
@@ -67,19 +69,21 @@ bore currently ships a relay-based encrypted file transfer path plus a real in-r
 - Noise `XXpsk0` handshake
 - encrypted transfer framing with SHA-256 verification
 - resumable single-file transfers with on-disk checkpoint state
-- relay `/healthz` and `/status` endpoints
+- per-IP rate limiting on relay `/ws` and `/signal` endpoints
+- explicit HTTP server timeouts (read, write, idle, header)
+- relay `/healthz`, `/status`, and `/metrics` endpoints
 - relay-served browser surface at `/` and `/ops/relay`
 - `bore-admin status` against the relay status endpoint
 - standalone punchthrough probing primitives and CLI
+- deployment packaging (Dockerfile, systemd service unit)
 
 ### What is still not done
 
 - direct transport integrated end-to-end into the client path
 - directory transfer
-- relay rate limiting, quotas, and metrics
 - authenticated or write-capable browser workflows
-- broader operator tooling beyond status snapshots
-- external security review and production hardening
+- broader operator tooling beyond status snapshots and metrics
+- external security review
 
 ### Hard truth to preserve in all docs
 
@@ -115,12 +119,20 @@ bore/
 │   ├── bore-admin/
 │   ├── punchthrough/
 │   └── relay/
+├── deploy/
+│   └── bore-relay.service
 ├── internal/
 │   ├── client/
 │   ├── punchthrough/
 │   └── relay/
+│       ├── metrics/
+│       ├── ratelimit/
+│       ├── room/
+│       ├── transport/
+│       └── webui/
 ├── web/
 ├── docs/
+├── Dockerfile
 ├── README.md
 ├── BUILD.md
 ├── ARCHITECTURE.md
@@ -170,26 +182,27 @@ What is still missing:
 
 ### `cmd/relay` + `internal/relay/`
 
-Status: functional room broker and embedded HTTP surface
+Status: hardened room broker with rate limiting, metrics, and deployment packaging
 
 What exists:
 
 - room registry and state machine
 - WebSocket sender and receiver flow
-- bidirectional encrypted frame relay
-- room TTL reaper
+- bidirectional encrypted frame relay with byte/frame counting
+- room TTL reaper with expiry callback
+- per-IP rate limiting on `/ws` and `/signal` endpoints
+- explicit HTTP server timeouts (read, write, idle, header)
+- operational metrics endpoint at `/metrics`
 - `/healthz` and `/status`
 - embedded static web serving at `/` and `/ops/relay/`
 - graceful shutdown handling
-- tests for room and transport behavior
+- Dockerfile and systemd service unit
+- tests for room, transport, rate limiting, and metrics behavior
 
 What is still missing:
 
-- explicit rate limiting
-- metrics endpoint
-- stronger operator-facing resource controls
-- deployment and service packaging artifacts
-- clearer production-hardening defaults
+- longer-term operator observation and alerting tooling
+- authenticated operator endpoints
 
 ### `web/`
 
@@ -286,6 +299,12 @@ go test ./internal/relay/... ./cmd/relay
 go build ./cmd/relay
 ```
 
+### Rate limiting and metrics
+
+```bash
+go test ./internal/relay/ratelimit/... ./internal/relay/metrics/...
+```
+
 ### Punchthrough
 
 ```bash
@@ -319,6 +338,8 @@ Browser check while Terminal 1 is running:
 - product page: `http://127.0.0.1:8080/`
 - relay ops page: `http://127.0.0.1:8080/ops/relay`
 - raw status JSON: `http://127.0.0.1:8080/status`
+- operational metrics: `http://127.0.0.1:8080/metrics`
+- health check: `http://127.0.0.1:8080/healthz`
 
 Terminal 2:
 
@@ -355,9 +376,9 @@ Success means the client can attempt a direct path, explain when it fails, and f
 
 Success means a single interrupted transfer can resume or cleanly restart with explicit rules and tests.
 
-### M3 — relay ops are credibly hardened
+### M3 — relay ops are credibly hardened ✓
 
-Success means the relay has rate limits, timeouts, metrics, and a clearer production posture.
+Success means the relay has rate limits, timeouts, metrics, and a clearer production posture. Done: per-IP rate limiting, HTTP timeouts, `/metrics` endpoint, deployment packaging.
 
 ### M4 — operator surfaces stay honest while gaining depth
 
@@ -437,20 +458,33 @@ Implementation notes:
 
 ### Phase 3 — relay hardening
 
-Status: planned, operationally important
+Status: done / checked
 
 Checklist:
 
-- [ ] add explicit rate limiting around room creation, room joins, and connection churn
-- [ ] add quotas or stronger resource controls for room occupancy and message pressure
-- [ ] add explicit HTTP server timeouts and tighten transport guardrails
-- [ ] add metrics endpoint and operator-facing counters
+- [x] add explicit rate limiting around room creation, room joins, and connection churn
+- [x] add quotas or stronger resource controls for room occupancy and message pressure
+- [x] add explicit HTTP server timeouts and tighten transport guardrails
+- [x] add metrics endpoint and operator-facing counters
+- [x] tighten deployment and service packaging rails
 - [ ] add admin-only profiling hooks only if they earn their keep operationally
-- [ ] tighten deployment and service packaging rails
 
 Exit criteria:
 
 - the relay reads as deliberately hardened, not merely functional
+
+Implementation notes:
+
+- `internal/relay/ratelimit/` provides per-IP token bucket rate limiting with automatic stale entry cleanup
+- `/ws` and `/signal` endpoints enforce configurable per-IP rate limits (default: 30 req/min)
+- `internal/relay/metrics/` provides atomic operator-facing counters: active/total WS connections, rooms created/joined/expired/relayed, bytes/frames relayed, rate limit hits, WS errors, signal exchanges
+- `/metrics` endpoint exposes a JSON snapshot of all counters
+- HTTP server now has explicit timeouts: read (30s), write (30s), idle (120s), read header (10s), max header (1 MB)
+- `DefaultServerConfig()` provides production-ready defaults for all timeouts and rate limits
+- room registry supports `OnExpire` callback for metrics integration
+- `Dockerfile` for multi-stage relay build with health check, non-root user, and minimal image
+- `deploy/bore-relay.service` systemd unit with security hardening directives
+- 8 new rate limit tests, 3 new metrics tests, 2 new room callback tests added
 
 ### Phase 4 — browser and operator surface
 
@@ -535,6 +569,12 @@ go test ./internal/relay/... ./cmd/relay
 go build ./cmd/relay
 ```
 
+### Rate limit or metrics changes
+
+```bash
+go test ./internal/relay/ratelimit/... ./internal/relay/metrics/... ./internal/relay/transport/...
+```
+
 ### Punchthrough changes
 
 ```bash
@@ -586,12 +626,14 @@ Mitigation:
 - the sender re-sends from the requested chunk on each connection — it does not persist progress
 - directory transfer resume requires additional design work beyond single-file resume
 
-### Risk: relay hardening is incomplete
+### Risk: relay hardening is baseline, not audited
 
 Mitigation:
 
-- treat the current relay as functional, not production-hardened
-- keep using the existing health and status endpoints for visibility, then add rate limiting, quotas, timeouts, and metrics before making stronger deployment claims
+- the relay now enforces per-IP rate limits, HTTP timeouts, and tracks operational metrics
+- deployment packaging (Dockerfile, systemd) is available
+- treat this as deliberately hardened for small-scale use, not as externally audited
+- an external security review is still needed before making stronger claims
 
 ### Open question: how much operator surface bore actually wants
 
@@ -614,15 +656,7 @@ Current answer:
 
 ### Default next lane
 
-If you are choosing the next substantive feature lane, pick **Phase 3 relay hardening** — adding rate limiting, timeouts, metrics, and production posture to the relay.
-
-### Concrete order of attack inside Phase 3
-
-1. add explicit rate limiting around room creation, room joins, and connection churn
-2. add quotas or stronger resource controls for room occupancy and message pressure
-3. add explicit HTTP server timeouts and tighten transport guardrails
-4. add metrics endpoint and operator-facing counters
-5. tighten deployment and service packaging rails
+If you are choosing the next substantive feature lane, pick **Phase 4 — browser and operator surface** or **Phase 6 — verification and release discipline** depending on whether the priority is user-facing polish or CI hardening.
 
 ### If the goal is cleanup instead of features
 

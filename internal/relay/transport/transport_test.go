@@ -26,9 +26,10 @@ func testServer(t *testing.T) (*Server, *httptest.Server) {
 	reg.RunReaper(ctx)
 	t.Cleanup(cancel)
 
-	srv := NewServer(ServerConfig{
+	cfg := ServerConfig{
 		Registry: reg,
-	})
+	}
+	srv := NewServer(cfg)
 	ts := httptest.NewUnstartedServer(srv.Handler())
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {

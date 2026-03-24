@@ -66,6 +66,8 @@ internal/
 │   ├── punch/               # NAT classification + punch engine
 │   └── stun/                # STUN client and probing primitives
 └── relay/
+    ├── metrics/             # atomic operator-facing counters
+    ├── ratelimit/           # per-IP token bucket rate limiting
     ├── room/                # room lifecycle and registry
     ├── transport/           # WebSocket server + frame forwarding
     └── webui/               # embedded static build output + HTTP handler
@@ -201,7 +203,7 @@ The CLI constructs a `Selector` dialer. With `--direct`, the selector runs STUN 
 
 ## Relay Architecture (`cmd/relay` + `internal/relay/`)
 
-The relay is intentionally narrow. It should act like a room broker and encrypted byte pipe, not an application-layer participant.
+The relay is intentionally narrow. It acts as a room broker and encrypted byte pipe, not an application-layer participant. It enforces per-IP rate limits, explicit HTTP server timeouts, and tracks operational metrics — all without inspecting relay payloads.
 
 ### Layering
 
@@ -241,9 +243,11 @@ Owns:
 
 - WebSocket accept/upgrade path
 - sender and receiver connection handling
-- frame relay between paired peers
+- frame relay between paired peers with byte/frame counting
 - `/signal` WebSocket endpoint for relay-coordinated candidate exchange (direct-path signaling)
-- lightweight `/healthz` and `/status` operator endpoints
+- `/healthz`, `/status`, and `/metrics` operator endpoints
+- per-IP rate limiting on `/ws` and `/signal` endpoints
+- explicit HTTP server timeouts (read, write, idle, header)
 - same-origin serving for the embedded static web UI
 
 Design constraints:
@@ -252,11 +256,20 @@ Design constraints:
 - do not reinterpret the encrypted application protocol or candidate content
 - keep server state minimal and disposable
 
-Current limitations:
+#### `internal/relay/ratelimit`
 
-- no explicit rate limiting yet
-- no metrics endpoint yet
-- operator visibility is still limited to lightweight health/status summaries and a read-only browser page
+Owns:
+
+- per-IP token bucket rate limiting
+- automatic cleanup of stale entries
+- IP extraction from HTTP requests
+
+#### `internal/relay/metrics`
+
+Owns:
+
+- atomic operator-facing counters (connections, rooms, bytes, frames, rate limit hits, errors, signal exchanges)
+- JSON-serializable snapshot for the `/metrics` endpoint
 
 #### `internal/relay/webui`
 
@@ -475,8 +488,8 @@ This selection logic is planned, not current behavior.
 ## Open Architectural Work
 
 - validate direct transport across diverse real-world NAT environments before promoting beyond opt-in
-- harden relay operations with rate limiting and metrics
 - add directory transfer (after single-file resume semantics are proven)
 - decide how much operator surface `bore-admin` actually needs beyond relay status polling
+- add external security review and formal audit
 
 For the current execution plan and verification commands, see [BUILD.md](BUILD.md). For security claims and limits, see [SECURITY.md](SECURITY.md).

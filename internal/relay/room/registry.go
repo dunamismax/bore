@@ -19,6 +19,10 @@ type RegistryConfig struct {
 	// ReapInterval is how often the background reaper checks for expired
 	// rooms. Zero defaults to 10 seconds.
 	ReapInterval time.Duration
+
+	// OnExpire is called for each room that the reaper expires. It is
+	// called while the registry lock is NOT held. May be nil.
+	OnExpire func(id string)
 }
 
 // DefaultRegistryConfig returns a RegistryConfig with sane defaults.
@@ -194,4 +198,11 @@ func (reg *Registry) reap() {
 		}
 	}
 	reg.mu.Unlock()
+
+	// Notify after releasing the lock.
+	if reg.config.OnExpire != nil {
+		for _, id := range expired {
+			reg.config.OnExpire(id)
+		}
+	}
 }

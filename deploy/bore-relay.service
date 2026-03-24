@@ -1,0 +1,41 @@
+[Unit]
+Description=Bore Relay Server
+Documentation=https://github.com/dunamismax/bore
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bore
+Group=bore
+
+ExecStart=/usr/local/bin/bore-relay
+Restart=on-failure
+RestartSec=5
+
+# Environment
+Environment=RELAY_ADDR=:8080
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

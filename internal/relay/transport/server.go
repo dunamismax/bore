@@ -1,11 +1,12 @@
 // Package transport implements the WebSocket relay transport layer.
 //
 // The server exposes a /ws endpoint for peer connections plus lightweight
-// /healthz and /status endpoints for operator visibility. Senders connect
-// without a room query parameter to create a new room; the server replies with
-// the room ID as the first text message. Receivers connect with
-// ?room=ROOM_ID to join an existing room. Once both peers are connected, the
-// server relays WebSocket frames bidirectionally without inspection.
+// /healthz, /status, and /metrics endpoints for operator visibility.
+// Senders connect without a room query parameter to create a new room;
+// the server replies with the room ID as the first text message. Receivers
+// connect with ?room=ROOM_ID to join an existing room. Once both peers are
+// connected, the server relays WebSocket frames bidirectionally without
+// inspection.
 package transport
 
 import (
@@ -17,6 +18,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dunamismax/bore/internal/relay/metrics"
+	"github.com/dunamismax/bore/internal/relay/ratelimit"
 	"github.com/dunamismax/bore/internal/relay/room"
 	"github.com/dunamismax/bore/internal/relay/webui"
 	"nhooyr.io/websocket"
@@ -33,6 +36,11 @@ type Server struct {
 	httpSrv  *http.Server
 	logger   *slog.Logger
 	started  time.Time
+	counters *metrics.Counters
+
+	// Rate limiters
+	wsLimiter     *ratelimit.Limiter
+	signalLimiter *ratelimit.Limiter
 
 	mu      sync.Mutex
 	pending map[string]*peerState
@@ -52,7 +60,7 @@ type peerState struct {
 // Each peer connects to /signal?room=ID&role=sender|receiver to exchange
 // candidate data for direct transport evaluation.
 type signalState struct {
-	senderMsg  chan []byte
+	senderMsg   chan []byte
 	receiverMsg chan []byte
 }
 
@@ -61,6 +69,55 @@ type ServerConfig struct {
 	Addr     string
 	Registry *room.Registry
 	Logger   *slog.Logger
+	Counters *metrics.Counters
+
+	// WSRateLimit controls the per-IP rate limit for /ws connections.
+	// Zero values disable rate limiting on /ws.
+	WSRateLimit ratelimit.Config
+
+	// SignalRateLimit controls the per-IP rate limit for /signal connections.
+	// Zero values disable rate limiting on /signal.
+	SignalRateLimit ratelimit.Config
+
+	// ReadTimeout is the maximum duration for reading the entire request.
+	// Zero defaults to 30 seconds.
+	ReadTimeout time.Duration
+
+	// WriteTimeout is the maximum duration before timing out writes of the response.
+	// Zero defaults to 30 seconds.
+	WriteTimeout time.Duration
+
+	// IdleTimeout is the maximum amount of time to wait for the next request.
+	// Zero defaults to 120 seconds.
+	IdleTimeout time.Duration
+
+	// ReadHeaderTimeout is the amount of time allowed to read request headers.
+	// Zero defaults to 10 seconds.
+	ReadHeaderTimeout time.Duration
+
+	// MaxHeaderBytes controls the maximum number of bytes the server will
+	// read parsing the request header. Zero defaults to 1 MB.
+	MaxHeaderBytes int
+}
+
+// DefaultServerConfig returns a ServerConfig with production-ready defaults.
+func DefaultServerConfig() ServerConfig {
+	return ServerConfig{
+		Addr: ":8080",
+		WSRateLimit: ratelimit.Config{
+			Rate:   30,
+			Window: time.Minute,
+		},
+		SignalRateLimit: ratelimit.Config{
+			Rate:   30,
+			Window: time.Minute,
+		},
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MB
+	}
 }
 
 // NewServer creates a new relay server.
@@ -68,25 +125,60 @@ func NewServer(cfg ServerConfig) *Server {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
+	if cfg.Counters == nil {
+		cfg.Counters = metrics.NewCounters()
+	}
+
+	// Apply timeout defaults.
+	if cfg.ReadTimeout == 0 {
+		cfg.ReadTimeout = 30 * time.Second
+	}
+	if cfg.WriteTimeout == 0 {
+		cfg.WriteTimeout = 30 * time.Second
+	}
+	if cfg.IdleTimeout == 0 {
+		cfg.IdleTimeout = 120 * time.Second
+	}
+	if cfg.ReadHeaderTimeout == 0 {
+		cfg.ReadHeaderTimeout = 10 * time.Second
+	}
+	if cfg.MaxHeaderBytes == 0 {
+		cfg.MaxHeaderBytes = 1 << 20
+	}
 
 	s := &Server{
 		registry: cfg.Registry,
 		logger:   cfg.Logger,
 		started:  time.Now(),
+		counters: cfg.Counters,
 		pending:  make(map[string]*peerState),
 		signals:  make(map[string]*signalState),
+	}
+
+	// Initialize rate limiters only if configured.
+	if cfg.WSRateLimit.Rate > 0 && cfg.WSRateLimit.Window > 0 {
+		s.wsLimiter = ratelimit.NewLimiter(cfg.WSRateLimit)
+	}
+	if cfg.SignalRateLimit.Rate > 0 && cfg.SignalRateLimit.Window > 0 {
+		s.signalLimiter = ratelimit.NewLimiter(cfg.SignalRateLimit)
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
 	mux.HandleFunc("/status", s.handleStatus)
+	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/ws", s.handleWS)
 	mux.HandleFunc("/signal", s.handleSignal)
 	mux.Handle("/", webui.NewHandler())
 
 	s.httpSrv = &http.Server{
-		Addr:    cfg.Addr,
-		Handler: mux,
+		Addr:              cfg.Addr,
+		Handler:           mux,
+		ReadTimeout:       cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+		MaxHeaderBytes:    cfg.MaxHeaderBytes,
 	}
 
 	return s
@@ -107,8 +199,14 @@ func (s *Server) Serve(ln net.Listener) error {
 	return s.httpSrv.Serve(ln)
 }
 
-// Shutdown gracefully shuts down the server.
+// Shutdown gracefully shuts down the server and releases rate limiter resources.
 func (s *Server) Shutdown(ctx context.Context) error {
+	if s.wsLimiter != nil {
+		s.wsLimiter.Stop()
+	}
+	if s.signalLimiter != nil {
+		s.signalLimiter.Stop()
+	}
 	return s.httpSrv.Shutdown(ctx)
 }
 
@@ -166,6 +264,11 @@ func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+func (s *Server) handleMetrics(w http.ResponseWriter, _ *http.Request) {
+	snap := s.counters.Snapshot()
+	writeJSON(w, http.StatusOK, snap)
+}
+
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -176,6 +279,17 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 // handleWS routes WebSocket connections to sender or receiver handlers
 // based on the presence of a "room" query parameter.
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
+	// Rate limiting.
+	if s.wsLimiter != nil {
+		ip := ratelimit.ExtractIP(r)
+		if !s.wsLimiter.Allow(ip) {
+			s.counters.RateLimitHit()
+			s.logger.Warn("ws: rate limited", "ip", ip)
+			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+	}
+
 	roomID := r.URL.Query().Get("room")
 	if roomID == "" {
 		s.handleSender(w, r)
@@ -191,9 +305,13 @@ func (s *Server) handleSender(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		s.logger.Error("sender: websocket accept failed", "error", err)
+		s.counters.WSError()
 		return
 	}
 	defer conn.CloseNow()
+
+	s.counters.WSConnect()
+	defer s.counters.WSDisconnect()
 
 	conn.SetReadLimit(maxMessageSize)
 
@@ -205,6 +323,7 @@ func (s *Server) handleSender(w http.ResponseWriter, r *http.Request) {
 		conn.Close(websocket.StatusInternalError, "room creation failed")
 		return
 	}
+	s.counters.RoomCreated()
 
 	// Register as pending so the receiver handler can find us.
 	ps := &peerState{
@@ -244,9 +363,10 @@ func (s *Server) handleSender(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.logger.Info("relay: starting", "room", rm.ID)
+	s.counters.RoomRelayed()
 
 	// Relay frames bidirectionally until one side disconnects.
-	if err := Relay(r.Context(), conn, recvConn); err != nil {
+	if err := Relay(r.Context(), conn, recvConn, s.counters); err != nil {
 		s.logger.Info("relay: ended", "room", rm.ID, "reason", err.Error())
 	} else {
 		s.logger.Info("relay: completed cleanly", "room", rm.ID)
@@ -271,9 +391,13 @@ func (s *Server) handleReceiver(w http.ResponseWriter, r *http.Request, roomID s
 	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		s.logger.Error("receiver: websocket accept failed", "room", roomID, "error", err)
+		s.counters.WSError()
 		return
 	}
 	defer conn.CloseNow()
+
+	s.counters.WSConnect()
+	defer s.counters.WSDisconnect()
 
 	conn.SetReadLimit(maxMessageSize)
 
@@ -283,6 +407,7 @@ func (s *Server) handleReceiver(w http.ResponseWriter, r *http.Request, roomID s
 		conn.Close(websocket.StatusPolicyViolation, "room not joinable")
 		return
 	}
+	s.counters.RoomJoined()
 
 	s.logger.Info("receiver: joined", "room", roomID)
 
@@ -320,9 +445,21 @@ func (s *Server) handleSignal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Rate limiting.
+	if s.signalLimiter != nil {
+		ip := ratelimit.ExtractIP(r)
+		if !s.signalLimiter.Allow(ip) {
+			s.counters.RateLimitHit()
+			s.logger.Warn("signal: rate limited", "ip", ip, "room", roomID, "role", role)
+			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+	}
+
 	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		s.logger.Error("signal: websocket accept failed", "room", roomID, "role", role, "error", err)
+		s.counters.WSError()
 		return
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "done")
@@ -355,6 +492,7 @@ func (s *Server) handleSignal(w http.ResponseWriter, r *http.Request) {
 	_, data, err := conn.Read(r.Context())
 	if err != nil {
 		s.logger.Error("signal: read failed", "room", roomID, "role", role, "error", err)
+		s.counters.WSError()
 		return
 	}
 
@@ -384,7 +522,9 @@ func (s *Server) handleSignal(w http.ResponseWriter, r *http.Request) {
 		// Forward the peer's candidate to this peer.
 		if err := conn.Write(r.Context(), websocket.MessageText, peerData); err != nil {
 			s.logger.Error("signal: write failed", "room", roomID, "role", role, "error", err)
+			s.counters.WSError()
 		}
+		s.counters.SignalExchange()
 	case <-r.Context().Done():
 		s.logger.Info("signal: peer did not arrive", "room", roomID, "role", role)
 	case <-time.After(30 * time.Second):

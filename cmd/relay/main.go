@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dunamismax/bore/internal/relay/metrics"
 	"github.com/dunamismax/bore/internal/relay/room"
 	"github.com/dunamismax/bore/internal/relay/transport"
 )
@@ -31,25 +32,39 @@ func run() error {
 		addr = v
 	}
 
-	reg := room.NewRegistry(room.DefaultRegistryConfig())
+	counters := metrics.NewCounters()
+
+	regCfg := room.DefaultRegistryConfig()
+	regCfg.OnExpire = func(_ string) {
+		counters.RoomExpired()
+	}
+	reg := room.NewRegistry(regCfg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	reaperDone := reg.RunReaper(ctx)
 
-	srv := transport.NewServer(transport.ServerConfig{
-		Addr:     addr,
-		Registry: reg,
-		Logger:   logger,
-	})
+	cfg := transport.DefaultServerConfig()
+	cfg.Addr = addr
+	cfg.Registry = reg
+	cfg.Logger = logger
+	cfg.Counters = counters
+
+	srv := transport.NewServer(cfg)
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", addr, err)
 	}
 
-	logger.Info("relay server starting", "addr", ln.Addr().String())
+	logger.Info("relay server starting",
+		"addr", ln.Addr().String(),
+		"readTimeout", cfg.ReadTimeout,
+		"writeTimeout", cfg.WriteTimeout,
+		"idleTimeout", cfg.IdleTimeout,
+		"wsRateLimit", fmt.Sprintf("%d/%s", cfg.WSRateLimit.Rate, cfg.WSRateLimit.Window),
+	)
 
 	// Shutdown on SIGTERM/SIGINT.
 	sigCh := make(chan os.Signal, 1)

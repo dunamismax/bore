@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 
+	"github.com/dunamismax/bore/internal/relay/metrics"
 	"nhooyr.io/websocket"
 )
 
@@ -17,19 +18,19 @@ import (
 // the next frame. If the receiver is slow, the reader blocks on write,
 // which backs up into the read, which applies TCP-level back-pressure.
 // No intermediate buffering beyond a single frame per direction.
-func Relay(ctx context.Context, a, b *websocket.Conn) error {
+func Relay(ctx context.Context, a, b *websocket.Conn, counters *metrics.Counters) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	errc := make(chan error, 2)
 
 	go func() {
-		errc <- forward(ctx, a, b)
+		errc <- forward(ctx, a, b, counters)
 		cancel() // if one direction ends, cancel the other
 	}()
 
 	go func() {
-		errc <- forward(ctx, b, a)
+		errc <- forward(ctx, b, a, counters)
 		cancel()
 	}()
 
@@ -58,7 +59,7 @@ func Relay(ctx context.Context, a, b *websocket.Conn) error {
 // forward reads frames from src and writes them to dst until the context
 // is canceled or an error occurs. It handles binary and text frames
 // identically — forwarding as-is.
-func forward(ctx context.Context, src, dst *websocket.Conn) error {
+func forward(ctx context.Context, src, dst *websocket.Conn, counters *metrics.Counters) error {
 	for {
 		typ, reader, err := src.Reader(ctx)
 		if err != nil {
@@ -73,13 +74,19 @@ func forward(ctx context.Context, src, dst *websocket.Conn) error {
 		// io.Copy streams the frame content from reader to writer.
 		// This handles back-pressure: Copy blocks on write if the
 		// destination is slow, which backs up into the read.
-		if _, err := io.Copy(w, reader); err != nil {
+		n, err := io.Copy(w, reader)
+		if err != nil {
 			w.Close()
 			return classifyError(err)
 		}
 
 		if err := w.Close(); err != nil {
 			return classifyError(err)
+		}
+
+		if counters != nil {
+			counters.BytesRelayed(n)
+			counters.FrameRelayed()
 		}
 	}
 }
