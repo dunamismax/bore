@@ -133,44 +133,6 @@ func setupQUICPair(b *testing.B) (*QUICConn, *QUICConn) {
 	return client, server
 }
 
-// setupReliablePair creates a connected ReliableConn pair over loopback UDP.
-func setupReliablePair(b *testing.B) (*ReliableConn, *ReliableConn) {
-	b.Helper()
-
-	// Use two connected UDP sockets on loopback.
-	addr1, _ := net.ResolveUDPAddr("udp4", "127.0.0.1:0")
-	addr2, _ := net.ResolveUDPAddr("udp4", "127.0.0.1:0")
-
-	conn1, err := net.ListenUDP("udp4", addr1)
-	if err != nil {
-		b.Fatal(err)
-	}
-	conn2, err := net.ListenUDP("udp4", addr2)
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	// Connect them to each other.
-	c1, err := net.DialUDP("udp4", conn1.LocalAddr().(*net.UDPAddr), conn2.LocalAddr().(*net.UDPAddr))
-	if err != nil {
-		b.Fatal(err)
-	}
-	c2, err := net.DialUDP("udp4", conn2.LocalAddr().(*net.UDPAddr), conn1.LocalAddr().(*net.UDPAddr))
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	r1 := NewReliableConn(c1)
-	r2 := NewReliableConn(c2)
-
-	b.Cleanup(func() {
-		r1.Close()
-		r2.Close()
-	})
-
-	return r1, r2
-}
-
 // BenchmarkQUICThroughput measures QUIC transport throughput.
 func BenchmarkQUICThroughput(b *testing.B) {
 	client, server := setupQUICPair(b)
