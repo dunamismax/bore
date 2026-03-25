@@ -1,4 +1,4 @@
-// Package transport — QUIC-based direct transport.
+// Package transport -- QUIC-based direct transport.
 //
 // This file implements a QUIC transport layer over a hole-punched UDP socket.
 // QUIC replaces the custom ReliableConn stop-and-wait protocol with
@@ -111,7 +111,7 @@ func (c *QUICConn) Close() error {
 // Metrics returns connection quality metrics from the QUIC connection.
 func (c *QUICConn) Metrics() QUICMetrics {
 	return QUICMetrics{
-		// QUIC connection is alive — basic quality signal.
+		// QUIC connection is alive -- basic quality signal.
 		Connected: !c.closed,
 	}
 }
@@ -219,7 +219,7 @@ func generateServerTLS() *tls.Config {
 
 // generateClientTLS creates a TLS config for the QUIC client.
 // InsecureSkipVerify is true because the TLS layer is not the security
-// boundary — bore's Noise handshake is.
+// boundary -- bore's Noise handshake is.
 func generateClientTLS() *tls.Config {
 	return &tls.Config{
 		InsecureSkipVerify: true, //nolint: gosec // Noise handshake provides auth

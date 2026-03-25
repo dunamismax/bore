@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}bore — peer-to-peer encrypted transfer{% endblock %}
+{% block title %}bore -- peer-to-peer encrypted transfer{% endblock %}
 {% block content %}
 
 {# Hero #}
@@ -14,7 +14,7 @@
         Bore moves a file directly between two machines using a short rendezvous code and a
         Noise handshake. The default path is peer-to-peer via STUN discovery and UDP
         hole-punching. When direct fails, a relay forwards encrypted bytes as a transparent
-        fallback — never seeing plaintext.
+        fallback -- never seeing plaintext.
       </p>
       <div style="margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: 0.75rem;">
         <a href="/ops/relay" class="btn btn-primary">Open relay operator surface</a>
@@ -83,7 +83,7 @@
     {% endfor %}
   </ol>
   <p class="text-muted" style="margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">
-    If the direct connection fails at any step — unfavorable NAT, STUN failure, punch timeout — the transfer falls back to the relay automatically. Use <code>--relay-only</code> to skip the direct attempt.
+    If the direct connection fails at any step (unfavorable NAT, STUN failure, punch timeout), the transfer falls back to the relay automatically. Use <code>--relay-only</code> to skip the direct attempt.
   </p>
 </section>
 
@@ -93,7 +93,7 @@
     {"label": "cmd/bore + internal/client/", "title": "P2P transfer engine", "desc": "Rendezvous, STUN discovery, signaling, direct transport, relay fallback, crypto, and file integrity."},
     {"label": "cmd/relay + internal/relay/", "title": "Signaling server + fallback", "desc": "Coordinates P2P candidate exchange, forwards encrypted frames as fallback, and serves operator surfaces."},
     {"label": "cmd/bore-admin", "title": "CLI operator summary", "desc": "Polls /status over HTTP for a terse terminal-side relay view."},
-    {"label": "cmd/punchthrough + internal/punchthrough/", "title": "NAT traversal engine", "desc": "STUN probing, NAT classification, and UDP hole-punching — integrated into the default transfer path."},
+    {"label": "cmd/punchthrough + internal/punchthrough/", "title": "NAT traversal engine", "desc": "STUN probing, NAT classification, and UDP hole-punching -- integrated into the default transfer path."},
   ] %}
   <div class="card fade-in" style="padding: 1.5rem; min-height: 14rem;">
     <p class="label" style="margin-bottom: 0.5rem;">{{ comp.label }}</p>

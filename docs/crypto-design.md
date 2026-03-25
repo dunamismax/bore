@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document describes bore's current cryptographic design. The crypto layer is transport-agnostic — it works identically over the direct P2P path (default) and the relay fallback path.
+This document describes bore's current cryptographic design. The crypto layer is transport-agnostic -- it works identically over the direct P2P path (default) and the relay fallback path.
 
 It is not a claim of formal verification or external audit. It is the implementation-level design reference for what the client is doing today.
 
@@ -113,7 +113,7 @@ Current properties:
 
 The channel is transport-agnostic at the IO boundary:
 
-- on the default direct path, it runs over the `ReliableConn` UDP framing layer
+- on the default direct path, it runs over QUIC (with ReliableConn as legacy fallback)
 - on the relay fallback path, it runs over the WebSocket relay transport
 - both paths deliver an `io.ReadWriteCloser` to the crypto layer
 
@@ -174,17 +174,15 @@ Design rule:
 
 ## What is not implemented yet
 
-- QUIC-based direct transport (currently using custom UDP reliability layer)
 - external crypto review or audit
 
-These gaps matter because they limit what claims the repo can make today.
+This gap matters because it limits what claims the repo can make today.
 
 ---
 
 ## Open follow-up questions
 
-1. should QUIC's TLS 1.3 handshake augment or replace the Noise handshake for the direct transport path?
-2. what hardening checks should become mandatory in CI for the crypto-relevant packages?
-3. when does the relay need explicit key and metadata lifecycle documentation beyond the current payload-blind design?
+1. what hardening checks should become mandatory in CI for the crypto-relevant packages?
+2. when does the relay need explicit key and metadata lifecycle documentation beyond the current payload-blind design?
 
 For the broader threat model, see [`threat-model.md`](threat-model.md). For current security posture, see [`../SECURITY.md`](../SECURITY.md).

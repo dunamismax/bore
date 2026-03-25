@@ -1,4 +1,4 @@
-// Package transport — reliable UDP framing layer.
+// Package transport -- reliable UDP framing layer.
 //
 // This file implements a simple reliability layer over a connected UDP socket.
 // The Noise handshake and bore transfer engine assume a stream (io.ReadWriter),
@@ -8,7 +8,7 @@
 //  2. Reliability (sequence numbers + selective ACK + retransmit)
 //  3. Ordered delivery (reassemble in-sequence)
 //
-// The protocol is intentionally minimal — just enough to carry bore's
+// The protocol is intentionally minimal -- just enough to carry bore's
 // encrypted application frames over UDP with reasonable loss tolerance.
 //
 // Wire format per packet:
@@ -24,10 +24,10 @@
 //
 // Flags:
 //
-//	0x01 — SYN  (connection open)
-//	0x02 — FIN  (connection close)
-//	0x04 — ACK  (acknowledgment, ack field is valid)
-//	0x08 — DATA (payload present)
+//	0x01 -- SYN  (connection open)
+//	0x02 -- FIN  (connection close)
+//	0x04 -- ACK  (acknowledgment, ack field is valid)
+//	0x08 -- DATA (payload present)
 package transport
 
 import (
@@ -352,7 +352,7 @@ func (c *ReliableConn) Read(p []byte) (int, error) {
 			}
 		}
 
-		// Pure ACK packet — no data for us. Keep reading.
+		// Pure ACK packet -- no data for us. Keep reading.
 	}
 }
 

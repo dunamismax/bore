@@ -58,7 +58,7 @@ func Relay(ctx context.Context, a, b *websocket.Conn, counters *metrics.Counters
 
 // forward reads frames from src and writes them to dst until the context
 // is canceled or an error occurs. It handles binary and text frames
-// identically — forwarding as-is.
+// identically -- forwarding as-is.
 func forward(ctx context.Context, src, dst *websocket.Conn, counters *metrics.Counters) error {
 	for {
 		typ, reader, err := src.Reader(ctx)

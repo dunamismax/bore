@@ -32,7 +32,7 @@ func (m Method) String() string {
 type FallbackReason int
 
 const (
-	// FallbackNone means no fallback occurred — direct transport succeeded,
+	// FallbackNone means no fallback occurred -- direct transport succeeded,
 	// or no direct attempt was configured.
 	FallbackNone FallbackReason = iota
 

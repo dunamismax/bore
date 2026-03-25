@@ -15,7 +15,7 @@ The repo also ships an operator dashboard built with Python, FastAPI, Jinja2, an
 
 ## Status
 
-Current truth:
+**v1.0.0** -- production release. Current truth:
 
 - the repo is one Go module rooted at `github.com/dunamismax/bore`
 - binaries live under `cmd/`: `bore`, `relay`, `bore-admin`, and `punchthrough`
@@ -52,14 +52,6 @@ Current truth:
 - deployment packaging (Dockerfile, systemd service unit)
 - standalone `punchthrough` CLI for NAT probing
 
-## Roadmap
-
-- TURN-style relay candidate in multi-candidate gathering
-- connection migration for mobile/roaming scenarios
-- directory transfer
-- broader operator tooling beyond status snapshots and metrics
-- broader security hardening and external review
-
 ## Components
 
 | Component | Location | Status | Purpose |
@@ -81,6 +73,22 @@ Bore's relay path does not need a durable database today.
 - transfer history and persisted operator history are not implemented yet.
 
 If Bore later earns local persistence for relay observations or operator history, start with a small relational SQLite store. If the browser surface ever grows into authenticated write-heavy workflows, keep it on SQLite with handwritten SQL migrations and queries.
+
+## Install
+
+```bash
+go install github.com/dunamismax/bore/cmd/bore@latest
+go install github.com/dunamismax/bore/cmd/relay@latest
+```
+
+Or build from source:
+
+```bash
+git clone https://github.com/dunamismax/bore.git
+cd bore
+go build ./cmd/bore
+go build ./cmd/relay
+```
 
 ## Quick start
 
@@ -265,12 +273,12 @@ QUIC provides congestion control and flow management
 for direct transport (~340 MB/s on loopback).
 ```
 
-## Near-term roadmap
+## Roadmap (post-v1.0)
 
-- surface QUIC transport metrics in operator view
-- add TURN-style relay candidate to multi-candidate gathering
-- add directory transfer after single-file resume semantics are proven
-- deepen operator tooling only where it solves real relay problems
+- TURN-style relay candidate in multi-candidate gathering
+- directory transfer after single-file resume semantics are proven
+- connection migration for mobile/roaming scenarios
+- deeper operator tooling where it solves real relay problems
 
 ## Notes
 

@@ -204,7 +204,7 @@ func TestAttempt_LoopbackSuccess(t *testing.T) {
 		HandshakeTimeout: 2 * time.Second,
 	}
 
-	// Start "peer 2" — the other side doing the same thing.
+	// Start "peer 2" -- the other side doing the same thing.
 	peer2Done := make(chan *PunchResult, 1)
 	peer2Err := make(chan error, 1)
 	go func() {

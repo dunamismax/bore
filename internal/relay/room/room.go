@@ -1,6 +1,6 @@
 // Package room implements the relay's room model and connection lifecycle.
 //
-// A room pairs exactly two peers — a sender and a receiver — by a short,
+// A room pairs exactly two peers -- a sender and a receiver -- by a short,
 // cryptographically random room ID. The room transitions through three
 // states: Waiting (sender connected, waiting for receiver), Active (both
 // peers present), and Closed (room torn down).
@@ -102,7 +102,7 @@ func (r *Room) Join(receiver net.Conn) error {
 }
 
 // Close transitions the room to Closed. It is safe to call multiple times.
-// Close does not close the underlying connections — that is the caller's
+// Close does not close the underlying connections -- that is the caller's
 // responsibility.
 func (r *Room) Close() {
 	r.mu.Lock()

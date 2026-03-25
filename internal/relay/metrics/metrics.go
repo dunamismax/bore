@@ -1,7 +1,7 @@
 // Package metrics provides operator-facing counters for the relay server.
 //
 // All counters are atomic and safe for concurrent use. The package
-// intentionally avoids pulling in heavy observability dependencies —
+// intentionally avoids pulling in heavy observability dependencies --
 // it provides a JSON-serializable snapshot that the relay can expose
 // at /metrics.
 package metrics

@@ -1,4 +1,4 @@
-"""Bore frontend — FastAPI application entry point."""
+"""Bore frontend -- FastAPI application entry point."""
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse

@@ -495,7 +495,7 @@ func TestRelay_InvalidRoomID(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Try to join a room that doesn't exist — should get an HTTP error before upgrade.
+	// Try to join a room that doesn't exist -- should get an HTTP error before upgrade.
 	_, resp, err := websocket.Dial(ctx, wsURL(ts, "/ws?room=nonexistent"), nil)
 	if err == nil {
 		t.Fatal("expected error for nonexistent room")

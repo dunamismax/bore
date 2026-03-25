@@ -47,7 +47,7 @@ type Selector struct {
 	// Required for signaling when EnableDirect is true.
 	SessionID string
 
-	// Role is "sender" or "receiver" — used for signaling.
+	// Role is "sender" or "receiver" -- used for signaling.
 	Role string
 
 	// STUNConfig overrides the STUN probing configuration.
@@ -128,7 +128,7 @@ func (s *Selector) dialSenderWithDiscovery(ctx context.Context) (string, Conn, e
 	// Try direct path in the background. On failure, use relayConn.
 	directConn, directErr := s.attemptDirect(ctx, sessionID, "sender")
 	if directErr == nil && directConn != nil {
-		// Direct succeeded — close the relay conn, use direct.
+		// Direct succeeded -- close the relay conn, use direct.
 		relayConn.Close()
 		s.LastSelection = SelectionResult{
 			Method:   MethodDirect,
@@ -139,7 +139,7 @@ func (s *Selector) dialSenderWithDiscovery(ctx context.Context) (string, Conn, e
 		return sessionID, mc, nil
 	}
 
-	// Direct failed — use relay.
+	// Direct failed -- use relay.
 	slog.Info("transport: direct attempt failed, using relay",
 		"err", directErr,
 		"session", sessionID,

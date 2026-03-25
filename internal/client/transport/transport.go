@@ -9,9 +9,9 @@
 //
 // Concrete implementations:
 //
-//   - [RelayDialer]  — WebSocket transport through a bore relay server.
-//   - [DirectDialer] — UDP transport for direct peer-to-peer (stub, not yet functional).
-//   - [Selector]     — tries direct first, falls back to relay.
+//   - [RelayDialer]  -- WebSocket transport through a bore relay server.
+//   - [DirectDialer] -- UDP transport for direct peer-to-peer (stub, not yet functional).
+//   - [Selector]     -- tries direct first, falls back to relay.
 package transport
 
 import (

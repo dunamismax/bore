@@ -461,7 +461,7 @@ func TestReceiveFileResume(t *testing.T) {
 }
 
 func TestReceiveFileInvalidResumeStateFallsBackToFresh(t *testing.T) {
-	// Pre-seed resume state with wrong SHA256 — should fall back to chunk 0.
+	// Pre-seed resume state with wrong SHA256 -- should fall back to chunk 0.
 	chunkSize := uint32(DefaultChunkSize)
 	fileData := []byte("fresh fallback test data")
 	filename := "fallback.txt"

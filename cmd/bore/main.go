@@ -21,7 +21,7 @@ import (
 	"github.com/dunamismax/bore/internal/client/transport"
 )
 
-const version = "0.1.0"
+const version = "1.0.0"
 
 func main() {
 	// Global verbose flag (must be parsed before subcommand).
@@ -318,6 +318,7 @@ func printHelp() {
 
 var implementedItems = []string{
 	"direct P2P transport by default (STUN discovery, hole-punching)",
+	"QUIC-based direct transport with congestion control (~340 MB/s loopback)",
 	"automatic relay fallback when direct connection fails",
 	"Noise_XXpsk0_25519_ChaChaPoly_SHA256 end-to-end encryption",
 	"HKDF-SHA256 PSK derivation from rendezvous code",
@@ -326,22 +327,25 @@ var implementedItems = []string{
 	"file transfer with chunking (256 KiB chunks)",
 	"resumable single-file transfers with on-disk checkpoint state",
 	"human-readable rendezvous codes (2-5 words, 26-50 bits entropy)",
+	"ICE-like multi-candidate gathering (host, server-reflexive)",
 	"relay-coordinated signaling for peer candidate exchange",
 	"observable transport decisions (method + fallback reason)",
+	"connection quality metrics tracking (throughput, byte counters)",
+	"FastAPI + htmx operator dashboard",
 	"bore send / bore receive CLI commands",
 }
 
 var notYetBuilt = []string{
-	"QUIC-based direct transport (replacing custom reliability layer)",
+	"TURN-style relay candidate in multi-candidate gathering",
 	"directory transfer",
-	"transfer history",
-	"security audit",
+	"connection migration for mobile/roaming",
+	"external security audit",
 }
 
 var nextFocus = []string{
-	"improve direct transport throughput (evaluate QUIC)",
-	"measure NAT traversal success rate across real networks",
-	"update browser surface for P2P-first architecture",
+	"add TURN-style relay candidate to multi-candidate gathering",
+	"add directory transfer after single-file resume is proven",
+	"deepen operator tooling where it solves real relay problems",
 }
 
 type component struct {
@@ -354,12 +358,17 @@ var components = []component{
 	{
 		"bore-client (Go)",
 		"active",
-		"Go client library and CLI: P2P direct transport, relay fallback, crypto, transfer engine",
+		"Go client library and CLI: P2P QUIC direct transport, relay fallback, crypto, transfer engine",
 	},
 	{
 		"relay",
 		"active",
 		"Go relay server: signaling for P2P connections, fallback transport, room registry",
+	},
+	{
+		"frontend",
+		"active",
+		"Python FastAPI + Jinja2 + htmx operator dashboard and product homepage",
 	},
 	{
 		"punchthrough",

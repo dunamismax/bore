@@ -86,7 +86,7 @@ func TestQUICClientServerLoopback(t *testing.T) {
 	// Use a single shared UDP socket like the real hole-punch flow does.
 	// In production, after hole-punching, both sides share their UDP socket
 	// with the QUIC transport. For the test we need two sockets to simulate
-	// two peers — one for the server and one for the client.
+	// two peers -- one for the server and one for the client.
 
 	serverConn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
@@ -311,7 +311,7 @@ func TestQUICLargeTransfer(t *testing.T) {
 		t.Fatalf("client open stream: %v", err)
 	}
 
-	// QUIC streams are lazy — write data to trigger server-side stream acceptance.
+	// QUIC streams are lazy -- write data to trigger server-side stream acceptance.
 	const dataSize = 1024 * 1024
 	data := make([]byte, dataSize)
 	for i := range data {

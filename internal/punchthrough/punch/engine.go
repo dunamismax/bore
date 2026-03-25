@@ -13,7 +13,7 @@ import (
 )
 
 // Punch protocol message types. Each message is a fixed 24-byte frame:
-//   - bytes 0-3:   magic number (0x50554E43 — "PUNC")
+//   - bytes 0-3:   magic number (0x50554E43 -- "PUNC")
 //   - byte 4:      message type
 //   - bytes 5-7:   reserved (zero)
 //   - bytes 8-15:  nonce (random, echoed in ACK)
@@ -201,7 +201,7 @@ func runPunchLoop(ctx context.Context, conn *net.UDPConn, peerAddr *net.UDPAddr,
 
 			switch msgType {
 			case msgPing:
-				// Peer sent us a ping — respond with a pong echoing their nonce and timestamp.
+				// Peer sent us a ping -- respond with a pong echoing their nonce and timestamp.
 				slog.Debug("punch received ping",
 					"from", raddr.String(),
 				)
@@ -216,7 +216,7 @@ func runPunchLoop(ctx context.Context, conn *net.UDPConn, peerAddr *net.UDPAddr,
 				}
 
 			case msgPong:
-				// Peer responded to our ping — measure RTT from the echoed timestamp.
+				// Peer responded to our ping -- measure RTT from the echoed timestamp.
 				sentNanos := binary.BigEndian.Uint64(buf[16:24])
 				rtt := time.Since(time.Unix(0, int64(sentNanos)))
 
@@ -231,7 +231,7 @@ func runPunchLoop(ctx context.Context, conn *net.UDPConn, peerAddr *net.UDPAddr,
 				}
 
 			case msgAck:
-				// Verification ACK received — punch is fully confirmed.
+				// Verification ACK received -- punch is fully confirmed.
 				slog.Debug("punch received ack",
 					"from", raddr.String(),
 				)
@@ -266,7 +266,7 @@ func runPunchLoop(ctx context.Context, conn *net.UDPConn, peerAddr *net.UDPAddr,
 			return &punchLoopResult{Attempts: attempts}, fmt.Errorf("receive: %w", err)
 
 		case rtt := <-pongReceived:
-			// Got a pong — now send an ACK to confirm bidirectional communication.
+			// Got a pong -- now send an ACK to confirm bidirectional communication.
 			ackMsg := buildMessage(msgAck, nonce, uint64(time.Now().UnixNano()))
 			if _, err := conn.WriteToUDP(ackMsg, peerAddr); err != nil {
 				slog.Debug("punch ack send failed", "error", err)
@@ -296,7 +296,7 @@ func runPunchLoop(ctx context.Context, conn *net.UDPConn, peerAddr *net.UDPAddr,
 				}, nil
 			case <-ackCtx.Done():
 				ackCancel()
-				// Peer pinged us but we never got our pong back — continue trying.
+				// Peer pinged us but we never got our pong back -- continue trying.
 				slog.Debug("punch handshake incomplete, continuing",
 					"peer", peerAddr.String(),
 				)

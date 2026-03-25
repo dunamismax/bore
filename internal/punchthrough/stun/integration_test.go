@@ -53,7 +53,7 @@ func TestProbe_RealSTUN(t *testing.T) {
 		t.Fatal("expected public address, got nil")
 	}
 	if result.NATType == NATUnknown {
-		t.Log("NAT type unknown — might have only one successful probe")
+		t.Log("NAT type unknown -- might have only one successful probe")
 	}
 
 	t.Logf("NAT type: %s", result.NATType)

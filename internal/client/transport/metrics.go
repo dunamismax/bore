@@ -7,7 +7,7 @@ import (
 )
 
 // MetricsConn wraps any Conn to track connection quality metrics.
-// It is transparent to the caller — reads and writes pass through
+// It is transparent to the caller -- reads and writes pass through
 // while accumulating byte counters and timing data.
 type MetricsConn struct {
 	inner     Conn

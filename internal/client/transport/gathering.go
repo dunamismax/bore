@@ -302,10 +302,10 @@ func gatherSTUNCandidates(ctx context.Context, cfg *stun.Config) ([]GatheredCand
 // Higher values indicate higher priority.
 //
 // Priority scheme (ICE-inspired):
-//   - Host (private network): 1000 (highest — same LAN is fastest)
+//   - Host (private network): 1000 (highest -- same LAN is fastest)
 //   - Host (public IP):        900
 //   - Server-reflexive:        500
-//   - Relay:                   100 (lowest — highest latency)
+//   - Relay:                   100 (lowest -- highest latency)
 func priorityForType(ct CandidateType, isPrivate bool) int {
 	switch ct {
 	case CandidateHost:

@@ -30,21 +30,22 @@ The architecture is **P2P-first, relay-fallback**:
 
 ## Current execution posture
 
-bore is **active**, post-rearchitecture.
+bore is at **v1.0.0**, production release.
 
-The repo shipped a working relay-based path in v0.1.0 (Phase 0). Direct transport was promoted to the default path in Phase 5. Phase 6 upgraded the direct transport to QUIC with production-quality congestion control, multi-candidate gathering, and connection quality metrics. Phase 7 added operator surfaces with transport stats, direct success/failure inference, and log-based alerting. Phase 8 added integration tests for the full direct transfer path and the direct-fails-relay-succeeds fallback. Phase 9 rewrote the frontend to FastAPI + htmx.
+All planned build phases (0-9) are complete. The repo ships P2P encrypted file transfer with QUIC direct transport, automatic relay fallback, Noise XXpsk0 end-to-end encryption, resumable transfers, an operator dashboard (FastAPI + htmx), alerting, and a full test suite with race detection clean.
 
 ### Architecture evolution
 
 ```
 v0.1.0:  relay-only (default) -> direct (opt-in, --direct flag)
 v0.2.0:  direct (default)     -> relay (fallback, --relay-only flag)
+v1.0.0:  production release   -> all phases complete, hardened and verified
 ```
 
-### Recommended build order unless a bug/security issue interrupts
+### Build phases (all complete)
 
 1. ~~make relay-based transfer work~~ (Phase 0 done)
-2. ~~build direct transport infrastructure~~ (Phase 1 legacy done)
+2. ~~build direct transport infrastructure~~ (Phase 1 done)
 3. ~~make single-file transfer resumable~~ (Phase 2 done)
 4. ~~harden relay operations~~ (Phase 3 done)
 5. ~~make direct transport the default path~~ (Phase 5 done)
@@ -782,22 +783,22 @@ Current answer:
 
 ---
 
-## Immediate next moves
+## Post-v1.0 next moves
 
-### Current lane: Phases 7-9 complete
+All build phases are complete. Future work is feature-driven, not phase-driven.
 
-Phases 7 (operator surfaces), 8 (verification), and 9 (frontend rewrite) are done. The next highest-leverage moves are:
+### If the goal is new capabilities
 
 1. **TURN-style relay candidate**: add relay as a candidate type in multi-candidate gathering
 2. **Directory transfer**: after single-file resume semantics are proven
 3. **Connection migration**: for mobile/roaming scenarios
 
-### If the goal is cleanup instead of features
+### If the goal is hardening
 
-1. improve the QUIC-to-ReliableConn fallback behavior under adverse conditions
-2. add more comprehensive tests for NAT combinations
-3. decide whether browser surface stays static until auth story exists
-4. external security review
+1. Improve the QUIC-to-ReliableConn fallback behavior under adverse conditions
+2. Add more comprehensive tests for NAT combinations
+3. Decide whether browser surface stays static until auth story exists
+4. External security review
 
 ---
 

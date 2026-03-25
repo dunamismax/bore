@@ -141,7 +141,7 @@ func TestReliableConstants(t *testing.T) {
 
 func TestNewReliableConnNotNil(t *testing.T) {
 	// We can't create a real net.Conn easily, but we can verify the constructor.
-	// Use a mockConn through a type assertion—since ReliableConn takes net.Conn
+	// Use a mockConn through a type assertion--since ReliableConn takes net.Conn
 	// and mockConn doesn't implement it, we test with nil and verify no panic
 	// at construction time.
 	rc := NewReliableConn(nil)

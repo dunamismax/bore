@@ -491,7 +491,7 @@ func ReceiveFile(ch *crypto.SecureChannel, rw io.ReadWriter, outputDir string) (
 	for idx := startChunk; idx < hdr.ChunkCount; idx++ {
 		chunkBytes, recvErr := ch.Recv(rw)
 		if recvErr != nil {
-			// Interrupted — save resume state.
+			// Interrupted -- save resume state.
 			saveState := &ResumeState{
 				TransferID:     tid,
 				Filename:       hdr.Filename,
@@ -540,7 +540,7 @@ func ReceiveFile(ch *crypto.SecureChannel, rw io.ReadWriter, outputDir string) (
 	// Verify SHA-256 integrity.
 	actualHash := sha256.Sum256(assembled)
 	if actualHash != hdr.SHA256 {
-		// Hash failed — resume state was bad; clean up.
+		// Hash failed -- resume state was bad; clean up.
 		DeleteResumeState(outputDir, tid)
 		return ReceiveResult{}, fmt.Errorf("SHA-256 integrity check failed: data corrupted in transit")
 	}
@@ -551,7 +551,7 @@ func ReceiveFile(ch *crypto.SecureChannel, rw io.ReadWriter, outputDir string) (
 		return ReceiveResult{}, fmt.Errorf("write output file: %w", err)
 	}
 
-	// Clean up resume state — transfer complete.
+	// Clean up resume state -- transfer complete.
 	DeleteResumeState(outputDir, tid)
 
 	return ReceiveResult{

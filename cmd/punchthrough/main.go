@@ -18,7 +18,7 @@ import (
 	"github.com/dunamismax/bore/internal/punchthrough/stun"
 )
 
-const version = "0.1.0"
+const version = "1.0.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -44,7 +44,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, `punchthrough — NAT traversal and UDP hole-punching
+	fmt.Fprintf(os.Stderr, `punchthrough -- NAT traversal and UDP hole-punching
 
 Usage:
   punchthrough <command> [flags]
@@ -74,7 +74,7 @@ func cmdProbe(args []string) error {
 		verbose     bool
 	)
 
-	// Simple flag parsing — no external deps.
+	// Simple flag parsing -- no external deps.
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--stun":
@@ -196,9 +196,9 @@ func printHuman(result *stun.ProbeResult, probeErr error) error {
 
 	for _, p := range result.Probes {
 		if p.Err != nil {
-			fmt.Printf("  ✗ %s — %v (%s)\n", p.Server, p.Err, p.Duration.Round(time.Millisecond))
+			fmt.Printf("  ✗ %s -- %v (%s)\n", p.Server, p.Err, p.Duration.Round(time.Millisecond))
 		} else {
-			fmt.Printf("  ✓ %s — %s (%s)\n", p.Server, p.MappedAddr, p.Duration.Round(time.Millisecond))
+			fmt.Printf("  ✓ %s -- %s (%s)\n", p.Server, p.MappedAddr, p.Duration.Round(time.Millisecond))
 		}
 	}
 

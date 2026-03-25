@@ -452,7 +452,7 @@ func (s *Server) handleReceiver(w http.ResponseWriter, r *http.Request, roomID s
 // candidate to the receiver and vice versa.
 //
 // The relay does not inspect the candidate content beyond parsing the JSON
-// envelope — it is a passthrough for signaling data.
+// envelope -- it is a passthrough for signaling data.
 func (s *Server) handleSignal(w http.ResponseWriter, r *http.Request) {
 	roomID := r.URL.Query().Get("room")
 	role := r.URL.Query().Get("role")
@@ -531,7 +531,7 @@ func (s *Server) handleSignal(w http.ResponseWriter, r *http.Request) {
 	select {
 	case myCh <- data:
 	default:
-		// Channel full — another connection for the same role/room.
+		// Channel full -- another connection for the same role/room.
 		s.logger.Warn("signal: duplicate role connection", "room", roomID, "role", role)
 	}
 

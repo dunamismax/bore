@@ -60,7 +60,7 @@ type DirectDialer struct {
 	// TransportReliableUDP (legacy stop-and-wait).
 	Mode TransportMode
 
-	// Role is "sender" or "receiver" — used to determine QUIC client/server
+	// Role is "sender" or "receiver" -- used to determine QUIC client/server
 	// assignment. Sender acts as QUIC client; receiver acts as QUIC server.
 	Role string
 }
