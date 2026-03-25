@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}bore — relay operator status{% endblock %}
+{% block content %}
+
+{# Hero #}
+<section class="card fade-in" style="padding: 1.5rem;">
+  <div style="display: grid; gap: 2rem; grid-template-columns: 1fr;" id="ops-hero-grid">
+    <div>
+      <p class="label" style="margin-bottom: 0.5rem;">Operator-facing surface</p>
+      <h1 style="font-size: clamp(1.75rem, 4vw, 3rem); font-weight: 700; line-height: 0.98; letter-spacing: -0.025em;">
+        Relay status, without pretending it is a control plane.
+      </h1>
+      <p class="text-muted" style="margin-top: 1rem; font-size: 1.125rem; line-height: 1.6;">
+        This page reads aggregate service data from the current relay at <code>/status</code>.
+        The relay serves as a signaling server for P2P connections and as a fallback transport.
+        This view is read-only and scoped to uptime, room counts, signaling activity, and configured limits.
+      </p>
+    </div>
+    <div style="border: 1px dashed var(--border); border-radius: 0.75rem; background: rgba(15,23,42,0.5); padding: 1.5rem;">
+      <p class="label" style="margin-bottom: 0.5rem;">Current scope</p>
+      <p class="text-muted">
+        No auth. No file inspection. No hidden backend. The relay is payload-blind — it
+        coordinates P2P connections and forwards encrypted bytes when direct fails.
+      </p>
+    </div>
+  </div>
+</section>
+
+{# Live status panel #}
+<section class="card fade-in" style="padding: 1.5rem;">
+  <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+    <div>
+      <p class="label" style="margin-bottom: 0.25rem;">Live snapshot</p>
+      <h2 style="font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em;">Relay status</h2>
+    </div>
+    <div style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.875rem;" class="text-muted">
+      <span class="htmx-indicator" style="font-size: 0.75rem;">⟳ refreshing…</span>
+      <span>Auto-refreshes every 2s</span>
+    </div>
+  </div>
+
+  <div id="relay-status"
+       hx-get="/partials/relay-status"
+       hx-trigger="load, every 2s"
+       hx-swap="innerHTML"
+       hx-indicator="closest section">
+    {# Initial server-rendered content #}
+    {% include "partials/relay_status.html" %}
+  </div>
+</section>
+
+<style>
+@media (min-width: 1024px) {
+  #ops-hero-grid { grid-template-columns: 1.4fr 0.9fr; }
+}
+</style>
+{% endblock %}

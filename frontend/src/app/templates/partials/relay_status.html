@@ -1,0 +1,89 @@
+{% if error %}
+<div style="padding: 1rem; border-radius: 0.5rem; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; font-size: 0.875rem;">
+  Status fetch failed: {{ error }}
+</div>
+{% elif relay %}
+<div style="display: grid; gap: 1.5rem;">
+
+  {# Service metrics #}
+  <div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));">
+    {% for item in [
+      {"label": "Service", "value": relay.service, "note": "Current relay identity from /status."},
+      {"label": "Status", "value": relay.status, "note": "Expected steady state is ok."},
+      {"label": "Uptime", "value": format_duration(relay.uptimeSeconds), "note": "Process uptime reported by the relay."},
+      {"label": "Max WS message", "value": format_bytes(relay.limits.maxMessageSizeBytes), "note": "Per-message transport cap enforced by the relay."},
+    ] %}
+    <div class="card" style="padding: 1rem;">
+      <p class="label" style="margin-bottom: 0.25rem;">{{ item.label }}</p>
+      <p class="metric-value">{{ item.value }}</p>
+      <p class="text-muted" style="margin-top: 0.5rem; font-size: 0.75rem;">{{ item.note }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# Room gauges #}
+  <div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));">
+    {% set max_rooms = relay.limits.maxRooms %}
+    {% for item in [
+      {"label": "Waiting rooms", "value": relay.rooms.waiting, "bar_style": "background: var(--bar-primary);"},
+      {"label": "Active rooms", "value": relay.rooms.active, "bar_style": "background: var(--bar-secondary);"},
+      {"label": "Total rooms tracked", "value": relay.rooms.total, "bar_style": "background: var(--bar-neutral);"},
+    ] %}
+    {% set fill = room_fill_percent(item.value, max_rooms) %}
+    <div class="card" style="padding: 1rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <p class="label" style="margin-bottom: 0.25rem;">{{ item.label }}</p>
+          <p class="metric-value">{{ item.value }}</p>
+        </div>
+        <span class="text-muted" style="font-family: ui-monospace, monospace; font-size: 0.875rem;">{{ fill }}%</span>
+      </div>
+      <div class="bar-track" style="margin-top: 0.75rem;">
+        <span class="bar-fill" style="{{ item.bar_style }} width: {{ fill }}%;"></span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# Transport stats #}
+  <div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));">
+    {% for item in [
+      {"label": "Signal exchanges", "value": relay.transport.signalExchanges, "note": "Completed P2P candidate exchanges via /signal."},
+      {"label": "Rooms relayed", "value": relay.transport.roomsRelayed, "note": "Transfers that used the relay as fallback transport."},
+      {"label": "Bytes relayed", "value": format_bytes(relay.transport.bytesRelayed), "note": "Total encrypted bytes forwarded through relay fallback."},
+      {"label": "Frames relayed", "value": relay.transport.framesRelayed, "note": "Total WebSocket frames forwarded through relay fallback."},
+    ] %}
+    <div class="card" style="padding: 1rem;">
+      <p class="label" style="margin-bottom: 0.25rem;">{{ item.label }}</p>
+      <p class="metric-value">{{ item.value }}</p>
+      <p class="text-muted" style="margin-top: 0.5rem; font-size: 0.75rem;">{{ item.note }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# Limits #}
+  <div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));">
+    {% for item in [
+      {"label": "Room TTL", "value": format_duration(relay.limits.roomTTLSeconds)},
+      {"label": "Reap interval", "value": format_duration(relay.limits.reapIntervalSeconds)},
+      {"label": "Room cap", "value": relay.limits.maxRooms},
+    ] %}
+    <div class="card" style="padding: 1rem;">
+      <p class="label" style="margin-bottom: 0.25rem;">{{ item.label }}</p>
+      <p style="font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em;">{{ item.value }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# Raw JSON toggle #}
+  <details style="border-radius: 0.75rem; border: 1px solid var(--border); background: rgba(30,41,59,0.3); padding: 1rem;">
+    <summary style="cursor: pointer; font-size: 0.875rem; font-weight: 500;">
+      Raw <code>/status</code> payload
+    </summary>
+    <pre style="margin-top: 0.75rem; overflow-x: auto; border-radius: 0.5rem; background: var(--bg); padding: 1rem; font-size: 0.875rem; font-family: ui-monospace, monospace;">{{ relay | tojson(indent=2) }}</pre>
+  </details>
+
+</div>
+{% else %}
+<p class="text-muted">Loading relay status…</p>
+{% endif %}

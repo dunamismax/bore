@@ -55,15 +55,15 @@ v0.2.0:  direct (default)     → relay (fallback, --relay-only flag)
 
 ## Repo snapshot
 
-bore ships a P2P-first encrypted file transfer path with QUIC direct transport and relay fallback, plus a browser surface, built from one root Go module and one frontend workspace:
+bore ships a P2P-first encrypted file transfer path with QUIC direct transport and relay fallback, plus an operator dashboard, built from one root Go module and one Python frontend:
 
 - `cmd/bore` plus `internal/client/` for the user-facing CLI, rendezvous flow, crypto, and transfer engine
-- `cmd/relay` plus `internal/relay/` for the WebSocket relay, signaling server, room registry, operator endpoints, and embedded web UI
+- `cmd/relay` plus `internal/relay/` for the WebSocket relay, signaling server, room registry, operator endpoints, and minimal web handler
 - `cmd/punchthrough` plus `internal/punchthrough/` for NAT probing and hole-punching
 - `cmd/bore-admin` for minimal operator CLI status polling
 - `internal/relay/ratelimit/` for per-IP token bucket rate limiting
 - `internal/relay/metrics/` for atomic operator-facing counters
-- `web/` for the Bun + React + Vite + TypeScript browser surface
+- `frontend/` for the FastAPI + Jinja2 + htmx operator dashboard (Python, no JS build step)
 
 ### What is working today
 
@@ -83,7 +83,7 @@ bore ships a P2P-first encrypted file transfer path with QUIC direct transport a
 - per-IP rate limiting on relay `/ws` and `/signal` endpoints
 - explicit HTTP server timeouts (read, write, idle, header)
 - relay `/healthz`, `/status`, and `/metrics` endpoints
-- relay-served browser surface at `/` and `/ops/relay`
+- relay serves minimal placeholder at `/` (operator dashboard is the Python frontend)
 - `bore-admin status` against the relay status endpoint
 - standalone punchthrough probing CLI
 - deployment packaging (Dockerfile, systemd service unit)
@@ -109,7 +109,7 @@ Current implementation truth:
 
 - there is no durable database in the shipped path today
 - `internal/relay/room` keeps bounded room state in memory only
-- `web/` reads live aggregate state from `/status`; it does not own writes or auth
+- `frontend/` reads live aggregate state from `/status` via the Go relay's API; it does not own writes or auth
 - `bore-admin` fetches `/status` on demand and does not persist snapshots
 - resumable transfer metadata is receiver-side filesystem state
 
@@ -133,6 +133,14 @@ bore/
 │   └── relay/
 ├── deploy/
 │   └── bore-relay.service
+├── frontend/
+│   ├── src/
+│   │   └── app/
+│   │       ├── routes/
+│   │       ├── templates/
+│   │       └── static/
+│   ├── tests/
+│   └── pyproject.toml
 ├── internal/
 │   ├── client/
 │   │   ├── code/
@@ -149,7 +157,6 @@ bore/
 │       ├── room/
 │       ├── transport/
 │       └── webui/
-├── web/
 ├── docs/
 ├── Dockerfile
 ├── README.md
@@ -220,7 +227,7 @@ What exists:
 - explicit HTTP server timeouts (read, write, idle, header)
 - operational metrics endpoint at `/metrics`
 - `/healthz` and `/status`
-- embedded static web serving at `/` and `/ops/relay/`
+- minimal web handler at `/` (operator dashboard served by Python frontend)
 - graceful shutdown handling
 - Dockerfile and systemd service unit
 - tests for room, transport, rate limiting, and metrics behavior
@@ -231,20 +238,19 @@ What is still missing:
 - longer-term operator observation and alerting tooling
 - authenticated operator endpoints
 
-### `web/`
+### `frontend/`
 
 Status: active, intentionally thin, P2P-first story
 
 What exists:
 
-- Bun-managed frontend workspace
-- React + Vite + TypeScript SPA with P2P-first product homepage and relay ops page
-- TanStack Query polling of `/status`
-- TanStack Router for client-side routing
-- shadcn/ui + Tailwind-based component system
-- transport method stats (signal exchanges, relay usage, bytes/frames) in operator page
-- Zod-validated status schema including transport stats
-- production build output embedded under `internal/relay/webui/dist/`
+- Python FastAPI app serving Jinja2 templates
+- htmx for live-updating relay status (polling every 2 seconds)
+- product homepage and relay operator dashboard
+- HTTPX client fetching data from Go relay's `/status`, `/healthz`, `/metrics` endpoints
+- Pydantic settings for configuration
+- static CSS via Tailwind CDN (no JavaScript build step)
+- ruff linting/formatting, pyright type checking, pytest tests
 
 What is still missing:
 
@@ -296,24 +302,25 @@ What is still missing:
 ### Prerequisites
 
 - Go `1.26.1`
-- Bun `1.3.x`
-- build and test from the repo root for Go, and from `web/` for frontend tasks
+- Python `3.12+` with `uv`
+- build and test from the repo root for Go, and from `frontend/` for frontend tasks
 
-### Web
+### Frontend
 
 ```bash
-cd web
-bun install
-bun run check
-bun run test
-bun run build
+cd frontend
+uv sync
+uv run ruff check .
+uv run ruff format --check .
+uv run pyright
+uv run pytest
 ```
 
 Notes:
 
-- `bun run build` writes the SPA output into `internal/relay/webui/dist/`
-- rebuild the web surface before shipping relay changes that depend on updated embedded assets
-- `bun run dev` proxies `/status` to `http://127.0.0.1:8080` for local development against a running relay
+- the Python frontend runs as a separate process alongside the Go relay
+- start with `cd frontend && uv run uvicorn app.main:app --host 127.0.0.1 --port 3000 --app-dir src`
+- set `BORE_RELAY_URL` to point at the Go relay (defaults to `http://127.0.0.1:8080`)
 
 ### Client
 
@@ -363,13 +370,19 @@ Terminal 1 — start relay (used for signaling + fallback):
 RELAY_ADDR=127.0.0.1:8080 go run ./cmd/relay
 ```
 
-Browser check while Terminal 1 is running:
+Terminal 1b — start frontend (in a separate terminal):
 
-- product page: `http://127.0.0.1:8080/`
-- relay ops page: `http://127.0.0.1:8080/ops/relay`
-- raw status JSON: `http://127.0.0.1:8080/status`
-- operational metrics: `http://127.0.0.1:8080/metrics`
-- health check: `http://127.0.0.1:8080/healthz`
+```bash
+cd frontend && BORE_RELAY_URL=http://127.0.0.1:8080 uv run uvicorn app.main:app --host 127.0.0.1 --port 3000 --app-dir src
+```
+
+Browser check while both are running:
+
+- product page: `http://127.0.0.1:3000/`
+- relay ops page: `http://127.0.0.1:3000/ops/relay`
+- raw status JSON (relay direct): `http://127.0.0.1:8080/status`
+- operational metrics (relay direct): `http://127.0.0.1:8080/metrics`
+- health check (relay direct): `http://127.0.0.1:8080/healthz`
 
 Terminal 2 — send (tries direct first, falls back to relay):
 
@@ -497,7 +510,7 @@ Status: active / P2P-first updates landed
 
 Checklist:
 
-- [x] relay-served browser surface under `web/`
+- [x] relay-served browser surface (now `frontend/` via FastAPI + htmx)
 - [x] same-origin read-only status page
 - [x] product story aligned with actual runtime
 - [x] update product story to reflect P2P-first architecture
@@ -581,7 +594,7 @@ Checklist:
 - [x] root `.github/workflows/ci.yml` runs component verification
 - [x] `golangci-lint run` in CI
 - [x] `govulncheck ./...` in CI
-- [x] cache Bun dependencies for the `web/` job
+- [x] CI job for `frontend/` (uv sync → ruff → pyright → pytest)
 - [x] add fuzz targets for rendezvous code and transfer frame parsing
 - [ ] add integration test for full direct transfer (loopback STUN mock)
 - [ ] add integration test for direct-fails-relay-succeeds path
@@ -590,6 +603,43 @@ Checklist:
 Exit criteria:
 
 - the repo proves its claims with repeatable checks
+
+### Phase 9 — frontend rewrite: FastAPI + htmx
+
+Status: **active**
+
+Replace the React + Vite + TypeScript SPA (`web/`) with a Python server-rendered frontend (`frontend/`). The Python frontend runs as a separate lightweight process, fetches data from the Go relay's existing API, and serves HTML pages with htmx for live updates. No JavaScript build step.
+
+Checklist:
+
+- [x] create `frontend/` directory with FastAPI + Jinja2 + htmx app
+- [x] `pyproject.toml` with uv, ruff, pyright, pytest
+- [x] `.python-version` pinning Python 3.12+
+- [x] FastAPI app that proxies to Go relay for `/status`, `/healthz`, `/metrics`
+- [x] Jinja2 base template with navigation (product page + relay ops)
+- [x] product homepage template (equivalent to SPA's `/` route)
+- [x] relay ops template (equivalent to SPA's `/ops/relay` route) with htmx live polling
+- [x] 404 template
+- [x] static CSS (Tailwind CDN, no build step)
+- [x] htmx `hx-get` with `hx-trigger="every 2s"` for live-updating relay status
+- [x] pytest tests for API routes
+- [x] `ruff check .` and `ruff format --check .` pass
+- [x] pyright passes
+- [x] delete `web/` directory entirely (React, Vite, Bun, TypeScript, node_modules)
+- [x] remove `web/` references from CI (`.github/workflows/ci.yml`)
+- [x] update Go relay to no longer embed SPA assets
+- [x] update `internal/relay/webui/` to serve a redirect or minimal placeholder
+- [x] add `frontend/` CI job (uv sync → ruff → pyright → pytest)
+- [x] update `BUILD.md` repo snapshot, monorepo layout, component snapshots
+- [x] update `README.md` to reflect new frontend stack
+- [ ] commit and push
+
+Exit criteria:
+
+- `cd frontend && uv sync && ruff check . && ruff format --check . && pytest` passes
+- Go code still compiles and passes tests: `gofmt -w . && go vet ./... && go test ./... && go build ./cmd/bore`
+- the relay ops page shows the same information the SPA showed, with htmx live updates
+- no Node, Bun, TypeScript, React, or JavaScript build step remains in the repo
 
 ---
 
@@ -603,10 +653,10 @@ Use the narrowest verification that proves the current claim.
 - confirm current-state sections describe implemented behavior
 - confirm planned sections are labeled as planned or active
 
-### Web changes
+### Frontend changes
 
 ```bash
-cd web && bun run check && bun run test && bun run build
+cd frontend && uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest
 ```
 
 ### Client changes
@@ -764,7 +814,7 @@ If you are resuming this repo later, do this in order:
 5. treat the repo root as the source of truth for Go builds
 6. pick one lane:
    - direct transport quality (Phase 6)
-   - browser/operator surface updates (Phase 4/7)
+   - frontend/operator surface updates (Phase 4/7/9)
    - verification and CI (Phase 8)
    - directory transfer
 7. run focused verification before and after the change

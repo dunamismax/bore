@@ -8,10 +8,10 @@ bore moves a file between two machines with a short human-readable rendezvous co
 
 All file data is end-to-end encrypted with Noise XXpsk0 regardless of transport path. The relay is payload-blind — it forwards encrypted bytes without any ability to inspect file contents.
 
-The repo also ships an in-repo browser surface built with Bun, React, Vite, and TypeScript:
+The repo also ships an operator dashboard built with Python, FastAPI, Jinja2, and htmx (no JavaScript build step):
 
-- `/` is the Bore homepage when served by the relay
-- `/ops/relay` is a read-only operator page backed by the relay's `/status` endpoint
+- `/` is the Bore homepage
+- `/ops/relay` is a live operator page backed by the relay's `/status` endpoint with htmx auto-refresh
 
 ## Status
 
@@ -20,7 +20,7 @@ Current truth:
 - the repo is one Go module rooted at `github.com/dunamismax/bore`
 - binaries live under `cmd/`: `bore`, `relay`, `bore-admin`, and `punchthrough`
 - shared Go packages live under `internal/`: `client`, `relay`, and `punchthrough`
-- the browser surface lives in `web/`
+- the operator dashboard lives in `frontend/` (Python + FastAPI + htmx)
 - **direct P2P is the default transfer path** — STUN discovery, signaling, hole-punching
 - **QUIC-based direct transport** with production-quality congestion control (default)
 - ICE-like multi-candidate gathering (host, server-reflexive candidates)
@@ -47,7 +47,7 @@ Current truth:
 - self-hostable WebSocket relay with `/healthz`, `/status`, and `/metrics`
 - per-IP rate limiting on relay `/ws` and `/signal` endpoints
 - explicit HTTP server timeouts (read, write, idle, header)
-- embedded relay-served web UI at `/` and `/ops/relay`
+- FastAPI + Jinja2 + htmx operator dashboard at `/` and `/ops/relay`
 - `bore-admin status` relay polling
 - deployment packaging (Dockerfile, systemd service unit)
 - standalone `punchthrough` CLI for NAT probing
@@ -66,7 +66,7 @@ Current truth:
 | --- | --- | --- | --- |
 | `bore` client | `cmd/bore`, `internal/client/` | active | P2P QUIC direct transport, relay fallback, crypto, transfer engine, CLI |
 | `relay` | `cmd/relay`, `internal/relay/` | active | Signaling server for P2P connections, fallback transport, room broker |
-| `web` | `web/` | active | React + Vite SPA for product story and live relay ops page |
+| `frontend` | `frontend/` | active | FastAPI + Jinja2 + htmx operator dashboard |
 | `punchthrough` | `cmd/punchthrough`, `internal/punchthrough/` | active, integrated | NAT probing, STUN discovery, UDP hole-punching → QUIC transport |
 | `bore-admin` | `cmd/bore-admin` | active | Minimal operator CLI for relay health and status polling |
 
@@ -75,7 +75,7 @@ Current truth:
 Bore's relay path does not need a durable database today.
 
 - `internal/relay/room` keeps live room state in memory only.
-- `web/` is a read-only browser surface that fetches the relay's live `/status` snapshot.
+- `frontend/` is a read-only operator dashboard that fetches the relay's live `/status` snapshot.
 - `bore-admin` is a stateless CLI over that same `/status` endpoint.
 - resumable transfer checkpoint state is persisted as JSON on the receiver's filesystem (not in a database).
 - transfer history and persisted operator history are not implemented yet.
@@ -84,21 +84,18 @@ If Bore later earns local persistence for relay observations or operator history
 
 ## Quick start
 
-### 1. Build the browser surface
-
-```bash
-cd web
-bun install
-bun run build
-```
-
-This writes the production web output into `internal/relay/webui/dist/` so the relay can embed and serve it.
-
-### 2. Build the relay and client
+### 1. Build the relay and client
 
 ```bash
 go build ./cmd/relay
 go build ./cmd/bore
+```
+
+### 2. Set up the frontend
+
+```bash
+cd frontend
+uv sync
 ```
 
 ### 3. Run a local relay
@@ -111,19 +108,25 @@ The relay serves as:
 - **Signaling server** — coordinates P2P candidate exchange between peers
 - **Fallback transport** — forwards encrypted bytes when direct P2P fails
 
-With the relay running:
+### 4. Start the frontend
 
-- product page: <http://127.0.0.1:8080/>
-- relay ops page: <http://127.0.0.1:8080/ops/relay>
-- raw status JSON: <http://127.0.0.1:8080/status>
+```bash
+cd frontend && BORE_RELAY_URL=http://127.0.0.1:8080 uv run uvicorn app.main:app --host 127.0.0.1 --port 3000 --app-dir src
+```
 
-### 4. Check relay status from the CLI
+With both running:
+
+- product page: <http://127.0.0.1:3000/>
+- relay ops page: <http://127.0.0.1:3000/ops/relay>
+- raw status JSON (relay): <http://127.0.0.1:8080/status>
+
+### 5. Check relay status from the CLI
 
 ```bash
 go run ./cmd/bore-admin status --relay http://127.0.0.1:8080
 ```
 
-### 5. Send a file
+### 6. Send a file
 
 ```bash
 ./bore send ./report.pdf --relay http://127.0.0.1:8080
@@ -146,13 +149,13 @@ SHA-256: a1b2c3...
 Transport: transport=direct
 ```
 
-### 6. Receive the file on the other machine
+### 7. Receive the file on the other machine
 
 ```bash
 ./bore receive Ahcj7nQZclo-j15A_xGS8w-868-outer-crane-crane --relay http://127.0.0.1:8080
 ```
 
-### 7. Force relay-only transport
+### 8. Force relay-only transport
 
 ```bash
 ./bore send ./report.pdf --relay http://127.0.0.1:8080 --relay-only
@@ -160,13 +163,14 @@ Transport: transport=direct
 
 ## Build and test
 
-### Web
+### Frontend
 
 ```bash
-cd web
-bun run check
-bun run test
-bun run build
+cd frontend
+uv run ruff check .
+uv run ruff format --check .
+uv run pyright
+uv run pytest
 ```
 
 ### Client
@@ -206,6 +210,14 @@ go build ./cmd/bore-admin
 │   ├── bore-admin/
 │   ├── punchthrough/
 │   └── relay/
+├── frontend/
+│   ├── src/
+│   │   └── app/
+│   │       ├── routes/
+│   │       ├── templates/
+│   │       └── static/
+│   ├── tests/
+│   └── pyproject.toml
 ├── internal/
 │   ├── client/
 │   │   ├── code/
@@ -222,7 +234,6 @@ go build ./cmd/bore-admin
 │       ├── room/
 │       ├── transport/
 │       └── webui/
-├── web/
 ├── docs/
 ├── ARCHITECTURE.md
 ├── BUILD.md

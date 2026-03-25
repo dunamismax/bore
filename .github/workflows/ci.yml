@@ -85,31 +85,22 @@ jobs:
       - name: Build
         run: go build ./cmd/bore-admin
 
-  web:
-    name: Web
+  frontend:
+    name: Frontend
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: web
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.10
-      - name: Cache Bun dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            web/node_modules
-            ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ hashFiles('web/bun.lock') }}
-          restore-keys: |
-            bun-${{ runner.os }}-
+      - uses: astral-sh/setup-uv@v6
       - name: Install
-        run: bun install --frozen-lockfile
-      - name: Check
-        run: bun run check
+        run: uv sync
+      - name: Lint
+        run: uv run ruff check .
+      - name: Format check
+        run: uv run ruff format --check .
+      - name: Type check
+        run: uv run pyright
       - name: Test
-        run: bun run test
-      - name: Build
-        run: bun run build
+        run: uv run pytest

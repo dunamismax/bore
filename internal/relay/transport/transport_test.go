@@ -119,46 +119,11 @@ func TestRelay_WebSurface(t *testing.T) {
 		t.Fatalf("read / body: %v", err)
 	}
 	rootHTML := string(rootBody)
-	if !strings.Contains(rootHTML, `<div id="root"></div>`) {
-		t.Fatalf("GET / body missing SPA root")
+	if !strings.Contains(rootHTML, `bore relay`) {
+		t.Fatalf("GET / body missing relay identification")
 	}
-	if !strings.Contains(rootHTML, `<title>Bore</title>`) {
-		t.Fatalf("GET / body missing page title")
-	}
-	if !strings.Contains(rootHTML, `/assets/index-`) {
-		t.Fatalf("GET / body missing built asset reference")
-	}
-
-	opsResp, err := http.Get(ts.URL + "/ops/relay/")
-	if err != nil {
-		t.Fatalf("GET /ops/relay/: %v", err)
-	}
-	defer opsResp.Body.Close()
-
-	if opsResp.StatusCode != http.StatusOK {
-		t.Fatalf("GET /ops/relay/ status = %d, want %d", opsResp.StatusCode, http.StatusOK)
-	}
-
-	opsBody, err := io.ReadAll(opsResp.Body)
-	if err != nil {
-		t.Fatalf("read /ops/relay/ body: %v", err)
-	}
-	opsHTML := string(opsBody)
-	if !strings.Contains(opsHTML, `<div id="root"></div>`) {
-		t.Fatalf("GET /ops/relay/ body missing SPA root")
-	}
-	if !strings.Contains(opsHTML, `/assets/index-`) {
-		t.Fatalf("GET /ops/relay/ body missing built asset reference")
-	}
-
-	notFoundResp, err := http.Get(ts.URL + "/missing")
-	if err != nil {
-		t.Fatalf("GET /missing: %v", err)
-	}
-	defer notFoundResp.Body.Close()
-
-	if notFoundResp.StatusCode != http.StatusNotFound {
-		t.Fatalf("GET /missing status = %d, want %d", notFoundResp.StatusCode, http.StatusNotFound)
+	if !strings.Contains(rootHTML, `/status`) {
+		t.Fatalf("GET / body missing /status link")
 	}
 }
 
