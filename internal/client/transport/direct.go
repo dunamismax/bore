@@ -10,6 +10,19 @@ import (
 	"github.com/dunamismax/bore/internal/punchthrough/punch"
 )
 
+// TransportMode controls which reliability layer is used for direct transport.
+type TransportMode int
+
+const (
+	// TransportQUIC uses QUIC over the punched UDP socket (default).
+	// Provides production-quality congestion control and flow management.
+	TransportQUIC TransportMode = iota
+
+	// TransportReliableUDP uses the custom ReliableConn stop-and-wait protocol.
+	// Simpler but limited throughput. Retained as fallback.
+	TransportReliableUDP
+)
+
 // DefaultDirectTimeout is the default timeout for establishing a direct
 // UDP connection before falling back to relay.
 const DefaultDirectTimeout = 3 * time.Second
@@ -18,8 +31,9 @@ const DefaultDirectTimeout = 3 * time.Second
 //
 // When CandidatePair is set and the NAT combination is favorable, it runs
 // UDP hole-punching via the punchthrough engine. On success, the resulting
-// socket is wrapped in a [ReliableConn] to provide the stream semantics
-// required by the Noise handshake and transfer engine.
+// socket is wrapped in a QUIC transport (default) or [ReliableConn] (legacy)
+// to provide the stream semantics required by the Noise handshake and
+// transfer engine.
 //
 // When CandidatePair is nil, it falls back to a simple connected UDP socket
 // to RemoteAddr (which will typically fail unless both peers are on the same
@@ -41,6 +55,14 @@ type DirectDialer struct {
 	// Timeout is the deadline for establishing the UDP connection.
 	// Zero uses [DefaultDirectTimeout].
 	Timeout time.Duration
+
+	// Mode selects the reliability layer: TransportQUIC (default) or
+	// TransportReliableUDP (legacy stop-and-wait).
+	Mode TransportMode
+
+	// Role is "sender" or "receiver" — used to determine QUIC client/server
+	// assignment. Sender acts as QUIC client; receiver acts as QUIC server.
+	Role string
 }
 
 // DialSender establishes a direct UDP connection as the sender.
@@ -134,14 +156,34 @@ func (d *DirectDialer) dialWithPunch(ctx context.Context) (Conn, error) {
 		"attempts", result.Attempts,
 	)
 
-	// Connect the UDP socket to the peer for stream-like usage.
-	// We create a new connected socket to the punched-through address.
+	// Select reliability layer based on transport mode.
+	if d.Mode == TransportQUIC {
+		slog.Info("direct: establishing QUIC over punched socket",
+			"role", d.Role,
+			"peer", peerAddr.String(),
+		)
+
+		qconn, err := quicConnFromPunchedSocket(ctx, conn, peerAddr, d.Role)
+		if err != nil {
+			slog.Info("direct: QUIC setup failed, falling back to ReliableConn",
+				"error", err,
+			)
+			// Fall through to ReliableConn as a graceful degradation.
+			return d.wrapReliable(conn, peerAddr)
+		}
+		return qconn, nil
+	}
+
+	// Legacy path: ReliableConn stop-and-wait.
+	return d.wrapReliable(conn, peerAddr)
+}
+
+// wrapReliable creates a connected UDP socket and wraps it in ReliableConn.
+func (d *DirectDialer) wrapReliable(conn *net.UDPConn, peerAddr *net.UDPAddr) (Conn, error) {
 	connectedConn, err := net.DialUDP("udp4", conn.LocalAddr().(*net.UDPAddr), peerAddr)
 	if err != nil {
 		return nil, fmt.Errorf("connect UDP after punch: %w", err)
 	}
-
-	// Wrap in the reliability layer.
 	return NewReliableConn(connectedConn), nil
 }
 
@@ -152,6 +194,8 @@ func (d *DirectDialer) dialUDP(ctx context.Context) (Conn, error) {
 		return nil, fmt.Errorf("no remote address configured for direct transport")
 	}
 
+	// For non-punch paths, always use ReliableConn since we don't have the
+	// unconnected UDP socket needed for QUIC transport setup.
 	dialer := &net.Dialer{}
 	netConn, err := dialer.DialContext(ctx, "udp", d.RemoteAddr)
 	if err != nil {

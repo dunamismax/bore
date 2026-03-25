@@ -22,6 +22,9 @@ Current truth:
 - shared Go packages live under `internal/`: `client`, `relay`, and `punchthrough`
 - the browser surface lives in `web/`
 - **direct P2P is the default transfer path** — STUN discovery, signaling, hole-punching
+- **QUIC-based direct transport** with production-quality congestion control (default)
+- ICE-like multi-candidate gathering (host, server-reflexive candidates)
+- connection quality metrics tracking (throughput, byte counters)
 - relay is the automatic fallback when direct fails
 - end-to-end encryption protects all data regardless of transport method
 - resumable single-file transfers with on-disk checkpoint state
@@ -39,7 +42,8 @@ Current truth:
 - SHA-256 file integrity verification
 - resumable single-file transfers with on-disk checkpoint state
 - STUN/NAT discovery and relay-coordinated signaling for peer candidate exchange
-- UDP hole-punching with reliable framing layer
+- UDP hole-punching with QUIC transport (default) or reliable framing layer (fallback)
+- multi-candidate gathering (host interfaces, STUN server-reflexive)
 - self-hostable WebSocket relay with `/healthz`, `/status`, and `/metrics`
 - per-IP rate limiting on relay `/ws` and `/signal` endpoints
 - explicit HTTP server timeouts (read, write, idle, header)
@@ -50,8 +54,8 @@ Current truth:
 
 ## Roadmap
 
-- QUIC-based direct transport for higher throughput
-- ICE-like multi-candidate gathering for better NAT traversal success
+- TURN-style relay candidate in multi-candidate gathering
+- connection migration for mobile/roaming scenarios
 - directory transfer
 - broader operator tooling beyond status snapshots and metrics
 - broader security hardening and external review
@@ -60,10 +64,10 @@ Current truth:
 
 | Component | Location | Status | Purpose |
 | --- | --- | --- | --- |
-| `bore` client | `cmd/bore`, `internal/client/` | active | P2P direct transport, relay fallback, crypto, transfer engine, CLI |
+| `bore` client | `cmd/bore`, `internal/client/` | active | P2P QUIC direct transport, relay fallback, crypto, transfer engine, CLI |
 | `relay` | `cmd/relay`, `internal/relay/` | active | Signaling server for P2P connections, fallback transport, room broker |
 | `web` | `web/` | active | React + Vite SPA for product story and live relay ops page |
-| `punchthrough` | `cmd/punchthrough`, `internal/punchthrough/` | active, integrated | NAT probing, STUN discovery, UDP hole-punching (default transport path) |
+| `punchthrough` | `cmd/punchthrough`, `internal/punchthrough/` | active, integrated | NAT probing, STUN discovery, UDP hole-punching → QUIC transport |
 | `bore-admin` | `cmd/bore-admin` | active | Minimal operator CLI for relay health and status polling |
 
 ## Data layer stance
@@ -241,17 +245,19 @@ go build ./cmd/bore-admin
             │ direct path │    │ relay path    │
             │ STUN + UDP  │    │ (automatic    │
             │ hole-punch  │    │ fallback)     │
+            │ → QUIC      │    │               │
             └─────────────┘    └───────────────┘
 
 Both paths use the same Noise XXpsk0 E2E encryption.
 The relay never sees plaintext.
+QUIC provides congestion control and flow management
+for direct transport (~340 MB/s on loopback).
 ```
 
 ## Near-term roadmap
 
-- evaluate QUIC for direct transport throughput improvements
-- measure NAT traversal success rate across real-world networks
-- update browser surface to reflect P2P-first architecture
+- surface QUIC transport metrics in operator view
+- add TURN-style relay candidate to multi-candidate gathering
 - add directory transfer after single-file resume semantics are proven
 - deepen operator tooling only where it solves real relay problems
 

@@ -63,6 +63,11 @@ type Selector struct {
 	// understand which transport was used and why.
 	LastSelection SelectionResult
 
+	// LastMetricsConn holds the MetricsConn wrapper for the most recent
+	// connection, if metrics tracking is enabled. Callers can use this
+	// to read connection quality metrics after transfer completes.
+	LastMetricsConn *MetricsConn
+
 	// discoveredConn is the UDP socket from STUN probing, reused for
 	// hole-punching to preserve NAT bindings.
 	discoveredConn *net.UDPConn
@@ -129,7 +134,9 @@ func (s *Selector) dialSenderWithDiscovery(ctx context.Context) (string, Conn, e
 			Method:   MethodDirect,
 			Fallback: FallbackNone,
 		}
-		return sessionID, directConn, nil
+		mc := NewMetricsConn(directConn, "quic")
+		s.LastMetricsConn = mc
+		return sessionID, mc, nil
 	}
 
 	// Direct failed — use relay.
@@ -139,7 +146,9 @@ func (s *Selector) dialSenderWithDiscovery(ctx context.Context) (string, Conn, e
 	)
 
 	// Already have the relay conn open.
-	return sessionID, relayConn, nil
+	mc := NewMetricsConn(relayConn, "relay")
+	s.LastMetricsConn = mc
+	return sessionID, mc, nil
 }
 
 // dialReceiverWithDiscovery runs the full discovery → signaling → punch → fallback path.
@@ -151,7 +160,9 @@ func (s *Selector) dialReceiverWithDiscovery(ctx context.Context, sessionID stri
 			Method:   MethodDirect,
 			Fallback: FallbackNone,
 		}
-		return directConn, nil
+		mc := NewMetricsConn(directConn, "quic")
+		s.LastMetricsConn = mc
+		return mc, nil
 	}
 
 	slog.Info("transport: direct attempt failed, using relay",
@@ -160,7 +171,13 @@ func (s *Selector) dialReceiverWithDiscovery(ctx context.Context, sessionID stri
 	)
 
 	relay := &RelayDialer{RelayURL: s.RelayURL}
-	return relay.DialReceiver(ctx, sessionID)
+	relayConn, err := relay.DialReceiver(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	mc := NewMetricsConn(relayConn, "relay")
+	s.LastMetricsConn = mc
+	return mc, nil
 }
 
 // attemptDirect runs STUN → signaling → NAT check → punch.
@@ -222,6 +239,8 @@ func (s *Selector) attemptDirect(ctx context.Context, sessionID, role string) (C
 		CandidatePair: pair,
 		PunchConn:     udpConn,
 		Timeout:       s.directTimeout(),
+		Mode:          TransportQUIC,
+		Role:          role,
 	}
 
 	_, conn, err := d.DialSender(ctx)

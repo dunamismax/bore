@@ -100,9 +100,12 @@ transport selector (direct-first, relay-fallback)
   ↓
 ┌─────────────────────────┬─────────────────────────┐
 │ direct transport        │ relay transport          │
-│ STUN → signal → punch   │ WebSocket relay          │
-│ → ReliableConn          │ → wsConn                 │
+│ gather → signal → punch │ WebSocket relay          │
+│ → QUIC (default)        │ → wsConn                 │
+│ → ReliableConn (legacy) │                          │
 └─────────────────────────┴─────────────────────────┘
+  ↓
+metrics tracking (MetricsConn)
   ↓
 crypto + transfer engine
   ↓
@@ -113,15 +116,17 @@ io.ReadWriter (transport-agnostic)
 
 ```text
 1. Selector receives dial request
-2. STUN probe → discover public address + NAT type
+2. Multi-candidate gathering: host + STUN server-reflexive candidates
 3. Exchange candidates via relay /signal endpoint
 4. Evaluate NAT combination for hole-punch feasibility
 5. Attempt UDP hole-punch
-6. On success → direct transport (ReliableConn)
-7. On failure → relay transport (wsConn)
+6. On success → QUIC transport over punched socket (default)
+7. On QUIC failure → ReliableConn fallback over punched socket
+8. On punch failure → relay transport (wsConn)
 
-Both paths deliver an io.ReadWriteCloser to the crypto layer.
-The Noise handshake and transfer engine are transport-agnostic.
+All paths deliver an io.ReadWriteCloser wrapped in MetricsConn
+to the crypto layer. The Noise handshake and transfer engine
+are transport-agnostic.
 ```
 
 ### Package responsibilities
@@ -202,17 +207,22 @@ Owns:
 
 - transport abstraction: `Conn` and `Dialer`
 - `Selector`: default dialer that tries direct first, falls back to relay
-- `DirectDialer`: UDP direct transport with hole-punch integration
+- `DirectDialer`: UDP direct transport with hole-punch integration and transport mode selection
 - `RelayDialer`: WebSocket relay transport
+- `QUICConn`: QUIC-based reliable transport over punched UDP socket (default direct transport)
+- `ReliableConn`: UDP reliability/framing layer (stop-and-wait, legacy fallback)
+- `MetricsConn`: transparent connection wrapper for throughput and quality tracking
+- `GatherCandidates`: ICE-like multi-candidate gathering (host, server-reflexive)
 - `SelectionResult`: records which transport was used and why
 - `Candidate` and `CandidatePair`: peer address and NAT type exchange types
 - `ExchangeCandidates`: relay-coordinated signaling for candidate exchange
 - `DiscoverCandidate`: STUN discovery wrapper
-- `ReliableConn`: UDP reliability/framing layer (stop-and-wait with retransmit)
+- `ConnectionQuality`: transport quality metrics (throughput, byte counters, timing)
+- `TransportMode`: selects QUIC (default) or ReliableUDP (legacy)
 
-**Default behavior**: The CLI constructs a `Selector` with `EnableDirect: true`. The selector runs STUN discovery, exchanges candidates through the relay's `/signal` endpoint, evaluates NAT feasibility, and attempts hole-punching before falling back to relay. Use `--relay-only` to skip the direct attempt.
+**Default behavior**: The CLI constructs a `Selector` with `EnableDirect: true`. The selector runs multi-candidate gathering, exchanges candidates through the relay's `/signal` endpoint, evaluates NAT feasibility, and attempts hole-punching. On success, QUIC is established over the punched socket. If QUIC fails, it degrades to ReliableConn. If hole-punching fails entirely, it falls back to relay. All connections are wrapped in `MetricsConn` for quality tracking. Use `--relay-only` to skip the direct attempt.
 
-After each dial, `Selector.LastSelection` records the transport decision with fallback reasons: `STUNFailed`, `NATUnfavorable`, `PunchFailed`, `SignalingFailed`, `DialFailed`, `Timeout`.
+After each dial, `Selector.LastSelection` records the transport decision with fallback reasons: `STUNFailed`, `NATUnfavorable`, `PunchFailed`, `SignalingFailed`, `DialFailed`, `Timeout`. `Selector.LastMetricsConn` provides connection quality metrics after transfer.
 
 ---
 
@@ -282,7 +292,9 @@ bore send/receive
     → DiscoverCandidate (STUN probe)
     → ExchangeCandidates (relay signaling)
     → DirectDialer.dialWithPunch (hole-punching)
-    → ReliableConn (reliable UDP framing)
+    → QUICConn (QUIC over punched socket, default)
+    → or ReliableConn (legacy fallback)
+    → MetricsConn (quality tracking wrapper)
     → Noise handshake + transfer engine
 ```
 
@@ -394,10 +406,11 @@ If Bore later needs local durable state, the default path is:
 
 ## Open Architectural Work
 
-- evaluate QUIC for direct transport throughput (Phase 6)
-- implement ICE-like multi-candidate gathering for better NAT traversal
+- TURN-style relay candidate in multi-candidate gathering
+- connection migration for mobile/roaming scenarios
 - add directory transfer (after single-file resume is proven)
-- update browser surface to reflect P2P-first architecture
+- update browser surface to reflect QUIC transport reality
+- surface QUIC metrics and connection quality in operator view
 - decide how much operator surface `bore-admin` actually needs
 - external security review and formal audit
 
