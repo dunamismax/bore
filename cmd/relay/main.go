@@ -45,6 +45,16 @@ func run() error {
 
 	reaperDone := reg.RunReaper(ctx)
 
+	// Start log-based relay health alerting.
+	alertCfg := metrics.DefaultAlertConfig()
+	go counters.RunAlerts(ctx, alertCfg, func() metrics.RoomSnapshot {
+		snap := reg.Snapshot()
+		return metrics.RoomSnapshot{
+			TotalRooms: snap.TotalRooms,
+			MaxRooms:   snap.MaxRooms,
+		}
+	})
+
 	cfg := transport.DefaultServerConfig()
 	cfg.Addr = addr
 	cfg.Registry = reg

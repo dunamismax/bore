@@ -76,7 +76,7 @@ type Selector struct {
 // DialSender tries direct transport first (if configured), then falls back
 // to relay.
 func (s *Selector) DialSender(ctx context.Context) (string, Conn, error) {
-	if s.EnableDirect && s.SessionID != "" {
+	if s.EnableDirect {
 		return s.dialSenderWithDiscovery(ctx)
 	}
 

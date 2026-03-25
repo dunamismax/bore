@@ -35,9 +35,9 @@ bore is a **P2P-first, relay-fallback** encrypted file transfer tool. The defaul
                 └──────┬───────┘
                        │
                 ┌──────▼──────┐
-                │ web surface │
-                │ React + Vite│
-                │ same-origin │
+                │ frontend    │
+                │ FastAPI +   │
+                │ htmx        │
                 └─────────────┘
 ```
 
@@ -45,7 +45,7 @@ bore is a **P2P-first, relay-fallback** encrypted file transfer tool. The defaul
 
 1. **Client (`cmd/bore` + `internal/client/`)** generates or parses a rendezvous code, discovers peers via STUN, exchanges candidates through the relay's signaling channel, attempts direct hole-punching, falls back to relay if needed, performs the Noise handshake, and streams encrypted file data.
 2. **Relay (`cmd/relay` + `internal/relay/`)** provides the signaling endpoint for P2P candidate exchange, serves as a fallback transport by forwarding encrypted frames over WebSockets, manages rooms, and serves the embedded browser surface.
-3. **Web (`web/`)** provides the product-facing homepage and a read-only relay ops page, built with Bun + React + Vite + TypeScript.
+3. **Frontend (`frontend/`)** provides the product-facing homepage and a read-only relay ops page, built with Python + FastAPI + Jinja2 + htmx (no JavaScript build step).
 4. **Punchthrough (`cmd/punchthrough` + `internal/punchthrough/`)** contains STUN and UDP hole-punching primitives, integrated into the client's default transport path.
 5. **bore-admin (`cmd/bore-admin`)** is a minimal operator CLI that queries relay status.
 
@@ -75,14 +75,16 @@ internal/
     ├── ratelimit/           # per-IP token bucket rate limiting
     ├── room/                # room lifecycle and registry
     ├── transport/           # WebSocket server + signaling + frame forwarding
-    └── webui/               # embedded static build output + HTTP handler
+    └── webui/               # minimal placeholder handler (dashboard served by frontend/)
 
-web/
+frontend/
 ├── src/
-│   ├── components/ui/       # shadcn/ui primitives
-│   ├── lib/                 # relay status client, format utils, cn()
-│   └── routes/              # TanStack Router route components
-└── tests/                   # focused frontend unit coverage
+│   └── app/
+│       ├── routes/          # FastAPI route handlers
+│       ├── templates/       # Jinja2 templates with htmx
+│       └── static/          # CSS (Tailwind CDN)
+├── tests/                   # pytest test coverage
+└── pyproject.toml           # uv, ruff, pyright, pytest config
 ```
 
 ---
@@ -100,9 +102,9 @@ transport selector (direct-first, relay-fallback)
   ↓
 ┌─────────────────────────┬─────────────────────────┐
 │ direct transport        │ relay transport          │
-│ gather → signal → punch │ WebSocket relay          │
-│ → QUIC (default)        │ → wsConn                 │
-│ → ReliableConn (legacy) │                          │
+│ gather -> signal -> punch │ WebSocket relay          │
+│ -> QUIC (default)        │ -> wsConn                 │
+│ -> ReliableConn (legacy) │                          │
 └─────────────────────────┴─────────────────────────┘
   ↓
 metrics tracking (MetricsConn)
@@ -120,9 +122,9 @@ io.ReadWriter (transport-agnostic)
 3. Exchange candidates via relay /signal endpoint
 4. Evaluate NAT combination for hole-punch feasibility
 5. Attempt UDP hole-punch
-6. On success → QUIC transport over punched socket (default)
-7. On QUIC failure → ReliableConn fallback over punched socket
-8. On punch failure → relay transport (wsConn)
+6. On success -> QUIC transport over punched socket (default)
+7. On QUIC failure -> ReliableConn fallback over punched socket
+8. On punch failure -> relay transport (wsConn)
 
 All paths deliver an io.ReadWriteCloser wrapped in MetricsConn
 to the crypto layer. The Noise handshake and transfer engine
@@ -230,8 +232,8 @@ After each dial, `Selector.LastSelection` records the transport decision with fa
 
 The relay serves two purposes:
 
-1. **Signaling server** — coordinates P2P candidate exchange via `/signal` WebSocket endpoint
-2. **Fallback transport** — forwards encrypted bytes via `/ws` when direct P2P fails
+1. **Signaling server** -- coordinates P2P candidate exchange via `/signal` WebSocket endpoint
+2. **Fallback transport** -- forwards encrypted bytes via `/ws` when direct P2P fails
 
 It is intentionally narrow. It never inspects relay payloads. It enforces per-IP rate limits, HTTP timeouts, and tracks operational metrics.
 
@@ -242,8 +244,8 @@ cmd/relay
   ↓
 WebSocket server / connection handling
   ↓
-├── /signal endpoint (P2P signaling — primary purpose)
-├── /ws endpoint (fallback transport — encrypted byte forwarding)
+├── /signal endpoint (P2P signaling -- primary purpose)
+├── /ws endpoint (fallback transport -- encrypted byte forwarding)
 ├── /healthz, /status, /metrics (operator endpoints)
 └── / and /ops/relay (embedded browser surface)
   ↓
@@ -273,10 +275,10 @@ Design constraints:
 
 #### Other relay packages
 
-- `internal/relay/room` — room creation, lookup, pairing, lifecycle, TTL
-- `internal/relay/ratelimit` — per-IP token bucket rate limiting
-- `internal/relay/metrics` — atomic operator-facing counters
-- `internal/relay/webui` — embedded SPA build artifacts
+- `internal/relay/room` -- room creation, lookup, pairing, lifecycle, TTL
+- `internal/relay/ratelimit` -- per-IP token bucket rate limiting
+- `internal/relay/metrics` -- atomic operator-facing counters
+- `internal/relay/webui` -- minimal placeholder handler (dashboard served by frontend/)
 
 ---
 
@@ -288,21 +290,21 @@ This component provides the NAT discovery and hole-punching primitives used by t
 
 ```text
 bore send/receive
-  → Selector (EnableDirect: true by default)
-    → DiscoverCandidate (STUN probe)
-    → ExchangeCandidates (relay signaling)
-    → DirectDialer.dialWithPunch (hole-punching)
-    → QUICConn (QUIC over punched socket, default)
-    → or ReliableConn (legacy fallback)
-    → MetricsConn (quality tracking wrapper)
-    → Noise handshake + transfer engine
+  -> Selector (EnableDirect: true by default)
+    -> DiscoverCandidate (STUN probe)
+    -> ExchangeCandidates (relay signaling)
+    -> DirectDialer.dialWithPunch (hole-punching)
+    -> QUICConn (QUIC over punched socket, default)
+    -> or ReliableConn (legacy fallback)
+    -> MetricsConn (quality tracking wrapper)
+    -> Noise handshake + transfer engine
 ```
 
 ### Package responsibilities
 
-- `internal/punchthrough/stun` — STUN requests/responses, network probing, external address discovery
-- `internal/punchthrough/punch` — NAT classification, UDP hole-punching flow, config/types/errors
-- `cmd/punchthrough` — operator/dev CLI entry point for probing and testing
+- `internal/punchthrough/stun` -- STUN requests/responses, network probing, external address discovery
+- `internal/punchthrough/punch` -- NAT classification, UDP hole-punching flow, config/types/errors
+- `cmd/punchthrough` -- operator/dev CLI entry point for probing and testing
 
 ---
 
@@ -358,19 +360,21 @@ Both flows use identical encryption. The relay forwards encrypted bytes without 
 
 ---
 
-## Browser Surface Architecture (`web/`)
+## Frontend Architecture (`frontend/`)
 
-The web surface is intentionally thin and same-origin with the relay.
+The frontend is a separate Python process (FastAPI + Jinja2 + htmx) that fetches data from the Go relay's API and renders server-side HTML with live updates.
 
-- `web/src/routes` — homepage, relay ops page, 404 catch-all
-- `web/src/lib` — relay status API client with Zod validation
-- `web/src/components/ui` — shadcn/ui component primitives
+- `frontend/src/app/routes` -- FastAPI route handlers for homepage, relay ops, 404
+- `frontend/src/app/templates` -- Jinja2 templates with htmx for live-updating relay status
+- `frontend/src/app/static` -- static CSS via Tailwind CDN (no JavaScript build step)
+- `frontend/tests` -- pytest test coverage
 
 Design constraints:
 
 - keep the web surface read-only
-- do not add a second API just to support the status page
+- fetch relay data from the Go relay's `/status`, `/healthz`, `/metrics` endpoints
 - keep the browser story aligned with the actual P2P-first product truth
+- no JavaScript build step
 
 ---
 
@@ -399,7 +403,7 @@ If Bore later needs local durable state, the default path is:
 2. **Docs describe the code that exists, not the code we wish existed.**
 3. **Relay stays payload-blind.**
 4. **Rendezvous code is cryptographic input, not cosmetic metadata.**
-5. **E2E encryption is transport-agnostic — works identically over direct or relay.**
+5. **E2E encryption is transport-agnostic -- works identically over direct or relay.**
 6. **Minimal tools stay clearly labeled until they carry broader workload.**
 
 ---
@@ -409,7 +413,6 @@ If Bore later needs local durable state, the default path is:
 - TURN-style relay candidate in multi-candidate gathering
 - connection migration for mobile/roaming scenarios
 - add directory transfer (after single-file resume is proven)
-- update browser surface to reflect QUIC transport reality
 - surface QUIC metrics and connection quality in operator view
 - decide how much operator surface `bore-admin` actually needs
 - external security review and formal audit

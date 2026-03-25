@@ -6,7 +6,7 @@
 
 bore moves a file between two machines with a short human-readable rendezvous code. The default transfer path is **direct peer-to-peer**: bore discovers each peer's network address via STUN, exchanges candidates through a lightweight signaling server, and establishes a direct UDP connection via hole-punching. If the direct connection fails (e.g., both peers behind symmetric NATs), bore falls back to a relay automatically.
 
-All file data is end-to-end encrypted with Noise XXpsk0 regardless of transport path. The relay is payload-blind — it forwards encrypted bytes without any ability to inspect file contents.
+All file data is end-to-end encrypted with Noise XXpsk0 regardless of transport path. The relay is payload-blind -- it forwards encrypted bytes without any ability to inspect file contents.
 
 The repo also ships an operator dashboard built with Python, FastAPI, Jinja2, and htmx (no JavaScript build step):
 
@@ -21,7 +21,7 @@ Current truth:
 - binaries live under `cmd/`: `bore`, `relay`, `bore-admin`, and `punchthrough`
 - shared Go packages live under `internal/`: `client`, `relay`, and `punchthrough`
 - the operator dashboard lives in `frontend/` (Python + FastAPI + htmx)
-- **direct P2P is the default transfer path** — STUN discovery, signaling, hole-punching
+- **direct P2P is the default transfer path** -- STUN discovery, signaling, hole-punching
 - **QUIC-based direct transport** with production-quality congestion control (default)
 - ICE-like multi-candidate gathering (host, server-reflexive candidates)
 - connection quality metrics tracking (throughput, byte counters)
@@ -67,7 +67,7 @@ Current truth:
 | `bore` client | `cmd/bore`, `internal/client/` | active | P2P QUIC direct transport, relay fallback, crypto, transfer engine, CLI |
 | `relay` | `cmd/relay`, `internal/relay/` | active | Signaling server for P2P connections, fallback transport, room broker |
 | `frontend` | `frontend/` | active | FastAPI + Jinja2 + htmx operator dashboard |
-| `punchthrough` | `cmd/punchthrough`, `internal/punchthrough/` | active, integrated | NAT probing, STUN discovery, UDP hole-punching → QUIC transport |
+| `punchthrough` | `cmd/punchthrough`, `internal/punchthrough/` | active, integrated | NAT probing, STUN discovery, UDP hole-punching -> QUIC transport |
 | `bore-admin` | `cmd/bore-admin` | active | Minimal operator CLI for relay health and status polling |
 
 ## Data layer stance
@@ -105,8 +105,8 @@ RELAY_ADDR=127.0.0.1:8080 go run ./cmd/relay
 ```
 
 The relay serves as:
-- **Signaling server** — coordinates P2P candidate exchange between peers
-- **Fallback transport** — forwards encrypted bytes when direct P2P fails
+- **Signaling server** -- coordinates P2P candidate exchange between peers
+- **Fallback transport** -- forwards encrypted bytes when direct P2P fails
 
 ### 4. Start the frontend
 
@@ -256,7 +256,7 @@ go build ./cmd/bore-admin
             │ direct path │    │ relay path    │
             │ STUN + UDP  │    │ (automatic    │
             │ hole-punch  │    │ fallback)     │
-            │ → QUIC      │    │               │
+            │ -> QUIC      │    │               │
             └─────────────┘    └───────────────┘
 
 Both paths use the same Noise XXpsk0 E2E encryption.
@@ -276,7 +276,7 @@ for direct transport (~340 MB/s on loopback).
 
 - The rendezvous code is a cryptographic input to the handshake, not just a routing token.
 - The relay serves as both signaling server (P2P candidate exchange) and fallback transport.
-- End-to-end encryption is identical regardless of transport path — the relay is always payload-blind.
+- End-to-end encryption is identical regardless of transport path -- the relay is always payload-blind.
 - Direct P2P is the default. Relay is the fallback. Use `--relay-only` to force relay transport.
 - If docs and code disagree, the docs are stale. Fix both in the same change.
 

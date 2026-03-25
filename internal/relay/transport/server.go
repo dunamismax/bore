@@ -231,10 +231,11 @@ type statusRooms struct {
 }
 
 type statusTransport struct {
-	SignalExchanges int64 `json:"signalExchanges"`
-	RoomsRelayed    int64 `json:"roomsRelayed"`
-	BytesRelayed    int64 `json:"bytesRelayed"`
-	FramesRelayed   int64 `json:"framesRelayed"`
+	SignalExchanges  int64 `json:"signalExchanges"`
+	SignalingStarted int64 `json:"signalingStarted"`
+	RoomsRelayed     int64 `json:"roomsRelayed"`
+	BytesRelayed     int64 `json:"bytesRelayed"`
+	FramesRelayed    int64 `json:"framesRelayed"`
 }
 
 type statusLimits struct {
@@ -271,10 +272,11 @@ func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 			MaxMessageSizeBytes: maxMessageSize,
 		},
 		Transport: statusTransport{
-			SignalExchanges: msnap.SignalExchanges,
-			RoomsRelayed:    msnap.RoomsRelayed,
-			BytesRelayed:    msnap.BytesRelayed,
-			FramesRelayed:   msnap.FramesRelayed,
+			SignalExchanges:  msnap.SignalExchanges,
+			SignalingStarted: msnap.SignalingStarted,
+			RoomsRelayed:     msnap.RoomsRelayed,
+			BytesRelayed:     msnap.BytesRelayed,
+			FramesRelayed:    msnap.FramesRelayed,
 		},
 	})
 }
@@ -480,6 +482,8 @@ func (s *Server) handleSignal(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close(websocket.StatusNormalClosure, "done")
 
 	conn.SetReadLimit(64 * 1024)
+
+	s.counters.SignalingStarted()
 
 	// Get or create the signal state for this room.
 	s.sigMu.Lock()

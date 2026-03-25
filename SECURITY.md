@@ -23,7 +23,7 @@ Implemented today:
 
 Important limits on those claims:
 
-- direct transport uses a custom UDP reliability layer (not QUIC), with limited congestion control
+- direct transport uses QUIC by default (via quic-go) with production-quality congestion control; a legacy ReliableConn fallback is retained
 - the system has not had an external security audit yet
 - bore is not an anonymity tool
 
@@ -165,7 +165,7 @@ Direct P2P transport is the default. Security considerations:
 - STUN probes reveal the peer's public IP to the STUN server
 - candidate exchange through the relay's signaling channel reveals both peers' public addresses to the relay operator
 - the direct UDP connection between peers is encrypted via Noise XXpsk0 (same as relay path)
-- the custom `ReliableConn` UDP framing layer provides reliability but not congestion control comparable to TCP/QUIC
+- the default direct transport is QUIC (via quic-go) with production-quality congestion control; a legacy ReliableConn fallback is retained for environments where QUIC fails
 - an active network attacker between peers cannot read or modify file data due to AEAD encryption, but can disrupt the direct connection (forcing relay fallback)
 
 ### Resume state is filesystem-based
@@ -174,7 +174,7 @@ Resume state is persisted as plaintext JSON + partial file data under `<outputDi
 
 - resume state files are created with mode 0600 (owner-read/write only)
 - the `.bore/` directory is created with mode 0700
-- partial data on disk is unencrypted — it represents the plaintext file content as received
+- partial data on disk is unencrypted -- it represents the plaintext file content as received
 - resume state is validated against the file header on each connection; mismatched metadata triggers a full restart
 - the final SHA-256 covers the entire reassembled file, not just the resumed portion
 - on successful transfer, all resume state and partial files are deleted

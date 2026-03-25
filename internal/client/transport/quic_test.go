@@ -319,9 +319,10 @@ func TestQUICLargeTransfer(t *testing.T) {
 	}
 
 	// Start writing immediately to trigger stream delivery.
-	var writeErr error
+	writeErrCh := make(chan error, 1)
 	go func() {
-		_, writeErr = clientStream.Write(data)
+		_, err := clientStream.Write(data)
+		writeErrCh <- err
 	}()
 
 	sr := <-serverCh
@@ -346,7 +347,7 @@ func TestQUICLargeTransfer(t *testing.T) {
 		received = append(received, buf[:n]...)
 	}
 
-	if writeErr != nil {
+	if writeErr := <-writeErrCh; writeErr != nil {
 		t.Fatalf("write error: %v", writeErr)
 	}
 

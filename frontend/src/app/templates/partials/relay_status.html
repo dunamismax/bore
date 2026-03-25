@@ -47,9 +47,15 @@
 
   {# Transport stats #}
   <div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));">
+    {% set sig_exchanges = relay.transport.signalExchanges|default(0) %}
+    {% set rooms_relayed = relay.transport.roomsRelayed|default(0) %}
+    {% set direct_inferred = [sig_exchanges - rooms_relayed, 0]|max %}
+    {% set direct_rate = "%.0f"|format(direct_inferred / sig_exchanges * 100) if sig_exchanges > 0 else "n/a" %}
     {% for item in [
-      {"label": "Signal exchanges", "value": relay.transport.signalExchanges, "note": "Completed P2P candidate exchanges via /signal."},
-      {"label": "Rooms relayed", "value": relay.transport.roomsRelayed, "note": "Transfers that used the relay as fallback transport."},
+      {"label": "Signaling started", "value": relay.transport.signalingStarted|default(0), "note": "Peers that opened a /signal connection for P2P candidate exchange."},
+      {"label": "Signal exchanges", "value": sig_exchanges, "note": "Completed P2P candidate exchanges via /signal."},
+      {"label": "Direct (inferred)", "value": direct_inferred, "note": "Signaling exchanges that did not result in relay fallback. Direct success rate: " ~ direct_rate ~ "%."},
+      {"label": "Rooms relayed", "value": rooms_relayed, "note": "Transfers that used the relay as fallback transport."},
       {"label": "Bytes relayed", "value": format_bytes(relay.transport.bytesRelayed), "note": "Total encrypted bytes forwarded through relay fallback."},
       {"label": "Frames relayed", "value": relay.transport.framesRelayed, "note": "Total WebSocket frames forwarded through relay fallback."},
     ] %}

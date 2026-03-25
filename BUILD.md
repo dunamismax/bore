@@ -24,7 +24,7 @@ The architecture is **P2P-first, relay-fallback**:
 - the default transfer path is a direct connection between sender and receiver
 - the relay exists as a signaling server and fallback transport when direct connections fail
 - end-to-end encryption (Noise XXpsk0) protects all file data regardless of transport path
-- the relay never sees plaintext — it is payload-blind whether used for signaling or fallback data relay
+- the relay never sees plaintext -- it is payload-blind whether used for signaling or fallback data relay
 
 ---
 
@@ -32,13 +32,13 @@ The architecture is **P2P-first, relay-fallback**:
 
 bore is **active**, post-rearchitecture.
 
-The repo shipped a working relay-based path in v0.1.0 (Phase 0). Direct transport was promoted to the default path in Phase 5. Phase 6 upgraded the direct transport to QUIC with production-quality congestion control, multi-candidate gathering, and connection quality metrics. The current work is **deepening operator surfaces and verification**.
+The repo shipped a working relay-based path in v0.1.0 (Phase 0). Direct transport was promoted to the default path in Phase 5. Phase 6 upgraded the direct transport to QUIC with production-quality congestion control, multi-candidate gathering, and connection quality metrics. Phase 7 added operator surfaces with transport stats, direct success/failure inference, and log-based alerting. Phase 8 added integration tests for the full direct transfer path and the direct-fails-relay-succeeds fallback. Phase 9 rewrote the frontend to FastAPI + htmx.
 
 ### Architecture evolution
 
 ```
-v0.1.0:  relay-only (default) → direct (opt-in, --direct flag)
-v0.2.0:  direct (default)     → relay (fallback, --relay-only flag)
+v0.1.0:  relay-only (default) -> direct (opt-in, --direct flag)
+v0.2.0:  direct (default)     -> relay (fallback, --relay-only flag)
 ```
 
 ### Recommended build order unless a bug/security issue interrupts
@@ -49,7 +49,9 @@ v0.2.0:  direct (default)     → relay (fallback, --relay-only flag)
 4. ~~harden relay operations~~ (Phase 3 done)
 5. ~~make direct transport the default path~~ (Phase 5 done)
 6. ~~improve direct transport quality~~ (Phase 6 done)
-7. deepen operator and browser surfaces (Phase 7 — active)
+7. ~~deepen operator and browser surfaces~~ (Phase 7 done)
+8. ~~verification and release discipline~~ (Phase 8 done)
+9. ~~frontend rewrite: FastAPI + htmx~~ (Phase 9 done)
 
 ---
 
@@ -67,7 +69,7 @@ bore ships a P2P-first encrypted file transfer path with QUIC direct transport a
 
 ### What is working today
 
-- **P2P direct transfer** as the default path (STUN discovery → signaling → hole-punch → transfer)
+- **P2P direct transfer** as the default path (STUN discovery -> signaling -> hole-punch -> transfer)
 - relay-based transfer as automatic fallback when direct fails
 - `--relay-only` flag to force relay path
 - rendezvous code generation and parsing
@@ -99,7 +101,7 @@ bore ships a P2P-first encrypted file transfer path with QUIC direct transport a
 
 ### Architecture truth
 
-The default transfer path is **direct P2P**. The client attempts STUN discovery, exchanges candidates through the relay's signaling channel, evaluates NAT feasibility, and attempts hole-punching. If direct fails at any step, the client falls back to the relay transport automatically. End-to-end encryption (Noise XXpsk0) protects all file data regardless of which transport path is used — the relay is always payload-blind.
+The default transfer path is **direct P2P**. The client attempts STUN discovery, exchanges candidates through the relay's signaling channel, evaluates NAT feasibility, and attempts hole-punching. If direct fails at any step, the client falls back to the relay transport automatically. End-to-end encryption (Noise XXpsk0) protects all file data regardless of which transport path is used -- the relay is always payload-blind.
 
 ---
 
@@ -190,7 +192,7 @@ What exists:
 - STUN/NAT discovery wired into the selector via `DiscoverCandidate`
 - **QUIC-based direct transport** (`QUICConn`) over punched UDP socket with congestion control
 - QUIC client/server role assignment (sender=client, receiver=server)
-- graceful QUIC→ReliableConn→relay degradation chain
+- graceful QUIC->ReliableConn->relay degradation chain
 - ICE-like multi-candidate gathering (`GatherCandidates`) with host and server-reflexive candidates
 - candidate prioritization (host > srflx > relay)
 - connection quality metrics tracking (`MetricsConn`) with throughput, byte counters, and timing
@@ -235,7 +237,6 @@ What exists:
 What is still missing:
 
 - TURN-style authenticated relay data channel
-- longer-term operator observation and alerting tooling
 - authenticated operator endpoints
 
 ### `frontend/`
@@ -257,7 +258,6 @@ What is still missing:
 - authenticated operator workflows
 - historical or persisted relay state
 - control-plane mutations
-- direct transport success/failure rate visualization
 
 ### `cmd/punchthrough` + `internal/punchthrough/`
 
@@ -290,9 +290,7 @@ What exists:
 
 What is still missing:
 
-- transport method breakdown in status output
 - persistent storage or local history
-- alerting
 - configuration profiles
 
 ---
@@ -364,13 +362,13 @@ go run ./cmd/bore-admin status --relay http://127.0.0.1:8080
 
 ### Local smoke flow
 
-Terminal 1 — start relay (used for signaling + fallback):
+Terminal 1 -- start relay (used for signaling + fallback):
 
 ```bash
 RELAY_ADDR=127.0.0.1:8080 go run ./cmd/relay
 ```
 
-Terminal 1b — start frontend (in a separate terminal):
+Terminal 1b -- start frontend (in a separate terminal):
 
 ```bash
 cd frontend && BORE_RELAY_URL=http://127.0.0.1:8080 uv run uvicorn app.main:app --host 127.0.0.1 --port 3000 --app-dir src
@@ -384,19 +382,19 @@ Browser check while both are running:
 - operational metrics (relay direct): `http://127.0.0.1:8080/metrics`
 - health check (relay direct): `http://127.0.0.1:8080/healthz`
 
-Terminal 2 — send (tries direct first, falls back to relay):
+Terminal 2 -- send (tries direct first, falls back to relay):
 
 ```bash
 ./bore send ./payload.txt --relay http://127.0.0.1:8080
 ```
 
-Terminal 3 — receive:
+Terminal 3 -- receive:
 
 ```bash
 ./bore receive <code> --relay http://127.0.0.1:8080
 ```
 
-Terminal 2 — send with relay-only (forces relay, skips direct):
+Terminal 2 -- send with relay-only (forces relay, skips direct):
 
 ```bash
 ./bore send ./payload.txt --relay http://127.0.0.1:8080 --relay-only
@@ -415,31 +413,31 @@ Expected result:
 
 ## Milestone map
 
-### M0 — relay-based encrypted transfer ✓
+### M0 -- relay-based encrypted transfer ✓
 
 Done. The relay path works, is tested, and is the proven fallback.
 
-### M1 — direct transport infrastructure ✓
+### M1 -- direct transport infrastructure ✓
 
 Done. STUN, signaling, hole-punching, ReliableConn all implemented and tested.
 
-### M2 — transfer durability ✓
+### M2 -- transfer durability ✓
 
 Done. Single-file resume with on-disk checkpoint state.
 
-### M3 — relay hardening ✓
+### M3 -- relay hardening ✓
 
 Done. Rate limits, timeouts, metrics, deployment packaging.
 
-### M4 — P2P-first default ✓
+### M4 -- P2P-first default ✓
 
 Done. Direct transport is the default path. `--relay-only` exists for forcing relay. Transport method is reported to the user.
 
-### M5 — direct transport quality ✓
+### M5 -- direct transport quality ✓
 
 Done. QUIC replaces custom ReliableConn as the default direct transport. Multi-candidate gathering implemented. ~340 MB/s throughput on loopback benchmarks.
 
-### M6 — operator surfaces grow with P2P reality
+### M6 -- operator surfaces grow with P2P reality
 
 Success means the browser and admin surfaces reflect the P2P-first reality: transport method stats, direct vs relay breakdown, signaling health.
 
@@ -447,9 +445,9 @@ Success means the browser and admin surfaces reflect the P2P-first reality: tran
 
 ## Phase dashboard
 
-### Phase 0 — relay-based encrypted transfer path (legacy, still functional)
+### Phase 0 -- relay-based encrypted transfer path (legacy, still functional)
 
-Status: done / checked — now serves as fallback transport
+Status: done / checked -- now serves as fallback transport
 
 Checklist:
 
@@ -462,9 +460,9 @@ Checklist:
 
 Note: Phase 0 is the foundation. The relay path continues to work as the automatic fallback when direct transport fails.
 
-### Phase 1 — direct-path infrastructure (legacy, integrated)
+### Phase 1 -- direct-path infrastructure (legacy, integrated)
 
-Status: done / checked — infrastructure integrated into client, promoted to default in Phase 5
+Status: done / checked -- infrastructure integrated into client, promoted to default in Phase 5
 
 Checklist:
 
@@ -479,7 +477,7 @@ Checklist:
 - [x] fallback reason tracking for transport decisions
 - [x] deterministic verification for direct-path and relay fallback
 
-### Phase 2 — transfer durability
+### Phase 2 -- transfer durability
 
 Status: done / checked
 
@@ -491,7 +489,7 @@ Checklist:
 - [x] interruption-recovery tests for relay-based transfers
 - [ ] directory transfer (after single-file resume is solid)
 
-### Phase 3 — relay hardening
+### Phase 3 -- relay hardening
 
 Status: done / checked
 
@@ -504,7 +502,7 @@ Checklist:
 - [x] deployment and service packaging
 - [ ] admin-only profiling hooks (deferred)
 
-### Phase 4 — browser and operator surface
+### Phase 4 -- browser and operator surface
 
 Status: active / P2P-first updates landed
 
@@ -518,7 +516,7 @@ Checklist:
 - [x] show direct vs relay breakdown in `/ops/relay`
 - [ ] decide whether browser surface stays static until auth story exists
 
-### Phase 5 — P2P-first default path ★ ACTIVE
+### Phase 5 -- P2P-first default path
 
 Status: **done / checked**
 
@@ -545,7 +543,7 @@ Exit criteria:
 - transport method is visible to the user
 - all existing relay-based tests continue to pass
 
-### Phase 6 — direct transport quality improvements
+### Phase 6 -- direct transport quality improvements
 
 Status: **done / checked**
 
@@ -553,7 +551,7 @@ Checklist:
 
 - [x] evaluate QUIC (`quic-go`) as replacement for custom `ReliableConn`
 - [x] implement QUIC-based direct transport with connection over punched UDP socket
-- [ ] add sliding window or proper congestion control to `ReliableConn` (if QUIC is deferred) — QUIC chosen, not needed
+- [ ] add sliding window or proper congestion control to `ReliableConn` (if QUIC is deferred) -- QUIC chosen, not needed
 - [x] implement ICE-like multi-candidate gathering (multiple STUN servers, local/relay candidates)
 - [ ] add TURN-style authenticated relay data channel (deferred to future phase)
 - [x] measure and optimize direct transport throughput
@@ -563,52 +561,52 @@ Checklist:
 
 Exit criteria:
 
-- direct transport throughput is competitive with relay for large files — **achieved: ~340 MB/s on QUIC loopback benchmark**
-- NAT traversal success rate is measured and documented — **multi-candidate gathering implemented; real-world measurement requires external testing**
-- fallback to relay is faster and more graceful — **QUIC failure gracefully degrades to ReliableConn, then to relay**
+- direct transport throughput is competitive with relay for large files -- **achieved: ~340 MB/s on QUIC loopback benchmark**
+- NAT traversal success rate is measured and documented -- **multi-candidate gathering implemented; real-world measurement requires external testing**
+- fallback to relay is faster and more graceful -- **QUIC failure gracefully degrades to ReliableConn, then to relay**
 
-### Phase 7 — operator and browser surfaces for P2P reality
+### Phase 7 -- operator and browser surfaces for P2P reality
 
-Status: active / initial transport stats landed
+Status: **done / checked**
 
 Checklist:
 
 - [x] show transport method breakdown (direct vs relay) in `/ops/relay`
 - [x] add signaling health metrics to `/metrics`
-- [ ] add direct transport success/failure rates to operator view
-- [ ] decide whether relay history needs persistence
-- [ ] add useful historical views only if they solve real problems
-- [ ] add alerting basics without turning bore into a control plane
+- [x] add direct transport success/failure rates to operator view (inferred from signaling vs relay counts)
+- [x] add alerting basics (log-based alerts for rate limit spikes, WebSocket errors, room utilization)
+- [ ] decide whether relay history needs persistence (deferred)
+- [ ] add useful historical views only if they solve real problems (deferred)
 
 Exit criteria:
 
 - operator surfaces reflect the actual P2P-first runtime
 - signaling and direct transport health are observable
 
-### Phase 8 — verification and release discipline
+### Phase 8 -- verification and release discipline
 
-Status: active / fuzz targets and CI caching landed
+Status: **done / checked**
 
 Checklist:
 
 - [x] root `.github/workflows/ci.yml` runs component verification
 - [x] `golangci-lint run` in CI
 - [x] `govulncheck ./...` in CI
-- [x] CI job for `frontend/` (uv sync → ruff → pyright → pytest)
+- [x] CI job for `frontend/` (uv sync -> ruff -> pyright -> pytest)
 - [x] add fuzz targets for rendezvous code and transfer frame parsing
-- [ ] add integration test for full direct transfer (loopback STUN mock)
-- [ ] add integration test for direct-fails-relay-succeeds path
-- [ ] keep all docs aligned when runtime claims change
+- [x] add integration test for full direct transfer (loopback QUIC)
+- [x] add integration test for direct-fails-relay-succeeds fallback path
+- [x] keep all docs aligned when runtime claims change
 
 Exit criteria:
 
 - the repo proves its claims with repeatable checks
 
-### Phase 9 — frontend rewrite: FastAPI + htmx
+### Phase 9 -- frontend rewrite: FastAPI + htmx
 
-Status: **active**
+Status: **done / checked**
 
-Replace the React + Vite + TypeScript SPA (`web/`) with a Python server-rendered frontend (`frontend/`). The Python frontend runs as a separate lightweight process, fetches data from the Go relay's existing API, and serves HTML pages with htmx for live updates. No JavaScript build step.
+Replaced the React + Vite + TypeScript SPA (`web/`) with a Python server-rendered frontend (`frontend/`). The Python frontend runs as a separate lightweight process, fetches data from the Go relay's existing API, and serves HTML pages with htmx for live updates. No JavaScript build step.
 
 Checklist:
 
@@ -629,10 +627,10 @@ Checklist:
 - [x] remove `web/` references from CI (`.github/workflows/ci.yml`)
 - [x] update Go relay to no longer embed SPA assets
 - [x] update `internal/relay/webui/` to serve a redirect or minimal placeholder
-- [x] add `frontend/` CI job (uv sync → ruff → pyright → pytest)
+- [x] add `frontend/` CI job (uv sync -> ruff -> pyright -> pytest)
 - [x] update `BUILD.md` repo snapshot, monorepo layout, component snapshots
 - [x] update `README.md` to reflect new frontend stack
-- [ ] commit and push
+- [x] commit and push
 
 Exit criteria:
 
@@ -729,7 +727,7 @@ Mitigation:
 
 - relay fallback is automatic and transparent
 - fallback reasons are observable for debugging
-- the user always gets their file transferred — the question is which path
+- the user always gets their file transferred -- the question is which path
 - measuring real-world success rate is a priority for Phase 6
 
 ### Risk: QUIC transport adds dependency complexity
@@ -738,7 +736,7 @@ Mitigation:
 
 - `quic-go` is a well-maintained, widely-used QUIC implementation
 - ReliableConn is retained as fallback if QUIC fails to establish
-- the degradation chain is: QUIC → ReliableConn → relay
+- the degradation chain is: QUIC -> ReliableConn -> relay
 - QUIC throughput is ~340 MB/s on loopback, a massive improvement over stop-and-wait
 
 ### Risk: resume state is per-receiver only
@@ -786,20 +784,20 @@ Current answer:
 
 ## Immediate next moves
 
-### Current lane: Phase 6 complete
+### Current lane: Phases 7-9 complete
 
-Phase 6 (direct transport quality) is done. QUIC transport, multi-candidate gathering, connection metrics, and throughput benchmarks are all in place. The next highest-leverage moves are:
+Phases 7 (operator surfaces), 8 (verification), and 9 (frontend rewrite) are done. The next highest-leverage moves are:
 
-1. **Phase 8 — integration tests**: loopback STUN mock for direct transfer, direct-fails-relay-succeeds path
-2. **Phase 7 — deeper operator stats**: direct transport success/failure rates, QUIC metrics in operator view
-3. **TURN-style relay candidate**: add relay as a candidate type in multi-candidate gathering
+1. **TURN-style relay candidate**: add relay as a candidate type in multi-candidate gathering
+2. **Directory transfer**: after single-file resume semantics are proven
+3. **Connection migration**: for mobile/roaming scenarios
 
 ### If the goal is cleanup instead of features
 
-1. add integration tests for the full QUIC transfer path
-2. improve the QUIC-to-ReliableConn fallback behavior under adverse conditions
-3. add more comprehensive tests for NAT combinations
-4. decide whether browser surface stays static until auth story exists
+1. improve the QUIC-to-ReliableConn fallback behavior under adverse conditions
+2. add more comprehensive tests for NAT combinations
+3. decide whether browser surface stays static until auth story exists
+4. external security review
 
 ---
 

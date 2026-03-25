@@ -36,6 +36,9 @@ type Counters struct {
 	// Signaling
 	signalExchanges atomic.Int64
 
+	// Direct transport inference
+	signalingStarted atomic.Int64 // peers that opened /signal
+
 	started time.Time
 }
 
@@ -60,6 +63,7 @@ func (c *Counters) FrameRelayed()        { c.framesRelayed.Add(1) }
 func (c *Counters) RateLimitHit()        { c.rateLimitHits.Add(1) }
 func (c *Counters) WSError()             { c.wsErrors.Add(1) }
 func (c *Counters) SignalExchange()      { c.signalExchanges.Add(1) }
+func (c *Counters) SignalingStarted()    { c.signalingStarted.Add(1) }
 
 // Snapshot returns a JSON-serializable point-in-time view of all counters.
 type Snapshot struct {
@@ -75,6 +79,7 @@ type Snapshot struct {
 	RateLimitHits       int64 `json:"rateLimitHits"`
 	WSErrors            int64 `json:"wsErrors"`
 	SignalExchanges     int64 `json:"signalExchanges"`
+	SignalingStarted    int64 `json:"signalingStarted"`
 }
 
 // Snapshot returns the current counter values.
@@ -92,5 +97,6 @@ func (c *Counters) Snapshot() Snapshot {
 		RateLimitHits:       c.rateLimitHits.Load(),
 		WSErrors:            c.wsErrors.Load(),
 		SignalExchanges:     c.signalExchanges.Load(),
+		SignalingStarted:    c.signalingStarted.Load(),
 	}
 }

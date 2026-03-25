@@ -28,6 +28,13 @@ type relayStatus struct {
 		ReapIntervalSeconds int64 `json:"reapIntervalSeconds"`
 		MaxMessageSizeBytes int64 `json:"maxMessageSizeBytes"`
 	} `json:"limits"`
+	Transport struct {
+		SignalExchanges  int64 `json:"signalExchanges"`
+		SignalingStarted int64 `json:"signalingStarted"`
+		RoomsRelayed     int64 `json:"roomsRelayed"`
+		BytesRelayed     int64 `json:"bytesRelayed"`
+		FramesRelayed    int64 `json:"framesRelayed"`
+	} `json:"transport"`
 }
 
 func main() {
@@ -113,6 +120,19 @@ func printStatus(relayURL string, status *relayStatus) {
 	fmt.Printf("  total:   %d\n", status.Rooms.Total)
 	fmt.Printf("  waiting: %d\n", status.Rooms.Waiting)
 	fmt.Printf("  active:  %d\n", status.Rooms.Active)
+	fmt.Println()
+	fmt.Println("transport:")
+	fmt.Printf("  signaling started: %d\n", status.Transport.SignalingStarted)
+	fmt.Printf("  signal exchanges:  %d\n", status.Transport.SignalExchanges)
+	fmt.Printf("  rooms relayed:     %d\n", status.Transport.RoomsRelayed)
+	fmt.Printf("  bytes relayed:     %d\n", status.Transport.BytesRelayed)
+	fmt.Printf("  frames relayed:    %d\n", status.Transport.FramesRelayed)
+	// Inferred direct success: signaling exchanges that did not result in relay usage.
+	directInferred := status.Transport.SignalExchanges - status.Transport.RoomsRelayed
+	if directInferred < 0 {
+		directInferred = 0
+	}
+	fmt.Printf("  direct (inferred): %d\n", directInferred)
 	fmt.Println()
 	fmt.Println("limits:")
 	fmt.Printf("  max rooms:       %d\n", status.Limits.MaxRooms)
