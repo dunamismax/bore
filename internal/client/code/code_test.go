@@ -362,3 +362,9 @@ func TestFullCodeParseNoChannel(t *testing.T) {
 		t.Error("expected error for missing channel")
 	}
 }
+
+func TestFullCodeParseRejectsInvalidRoomID(t *testing.T) {
+	if _, err := ParseFull("bad/id-42-apple-beach-crown", "http://localhost:8080"); err == nil {
+		t.Error("expected error for invalid room ID")
+	}
+}

@@ -2,7 +2,7 @@
 
 Technical architecture and design notes for `bore`.
 
-This document describes the current repo architecture and the near-term shape it is growing toward. For build commands and the current execution checklist, see [BUILD.md](BUILD.md).
+This document describes the current repo architecture. For build and verification commands, see [README.md](README.md).
 
 ---
 
@@ -70,12 +70,13 @@ internal/
 ├── punchthrough/
 │   ├── punch/               # NAT classification + punch engine
 │   └── stun/                # STUN client and probing primitives
-└── relay/
-    ├── metrics/             # atomic operator-facing counters
-    ├── ratelimit/           # per-IP token bucket rate limiting
-    ├── room/                # room lifecycle and registry
-    ├── transport/           # WebSocket server + signaling + frame forwarding
-    └── webui/               # minimal placeholder handler (dashboard served by frontend/)
+├── relay/
+│   ├── metrics/             # atomic operator-facing counters
+│   ├── ratelimit/           # per-IP token bucket rate limiting
+│   ├── room/                # room lifecycle and registry
+│   ├── transport/           # WebSocket server + signaling + frame forwarding
+│   └── webui/               # minimal placeholder handler (dashboard served by frontend/)
+└── roomid/                  # shared relay room ID validation rules
 
 frontend/
 ├── src/
@@ -417,4 +418,4 @@ If Bore later needs local durable state, the default path is:
 - decide how much operator surface `bore-admin` actually needs
 - external security review and formal audit
 
-For the current execution plan and verification commands, see [BUILD.md](BUILD.md). For security claims and limits, see [SECURITY.md](SECURITY.md).
+For verification commands and local run instructions, see [README.md](README.md). For security claims and limits, see [SECURITY.md](SECURITY.md).

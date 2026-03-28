@@ -90,6 +90,12 @@ func TestBuildWSURLPortPreserved(t *testing.T) {
 	}
 }
 
+func TestBuildWSURLRejectsInvalidRoomID(t *testing.T) {
+	if _, err := BuildWSURL("http://localhost:8080", "bad/id"); err == nil {
+		t.Fatal("expected error for invalid room ID")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Interface conformance tests
 // ---------------------------------------------------------------------------

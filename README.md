@@ -46,6 +46,7 @@ The repo also ships an operator dashboard built with Python, FastAPI, Jinja2, an
 - multi-candidate gathering (host interfaces, STUN server-reflexive)
 - self-hostable WebSocket relay with `/healthz`, `/status`, and `/metrics`
 - per-IP rate limiting on relay `/ws` and `/signal` endpoints
+- room ID validation on relay join/signaling paths, with signaling limited to live relay rooms
 - explicit HTTP server timeouts (read, write, idle, header)
 - FastAPI + Jinja2 + htmx operator dashboard at `/` and `/ops/relay`
 - `bore-admin status` relay polling
@@ -236,17 +237,25 @@ go build ./cmd/bore-admin
 │   ├── punchthrough/
 │   │   ├── punch/
 │   │   └── stun/
-│   └── relay/
-│       ├── metrics/
-│       ├── ratelimit/
-│       ├── room/
-│       ├── transport/
-│       └── webui/
+│   ├── relay/
+│   │   ├── metrics/
+│   │   ├── ratelimit/
+│   │   ├── room/
+│   │   ├── transport/
+│   │   └── webui/
+│   └── roomid/
 ├── docs/
 ├── ARCHITECTURE.md
-├── BUILD.md
+├── CHANGELOG.md
 └── SECURITY.md
 ```
+
+## Docs
+
+- `README.md` - current product status, quick start, and verification commands
+- `ARCHITECTURE.md` - system layout, transport layering, and design notes
+- `SECURITY.md` - threat model, implemented guardrails, and current limits
+- `CHANGELOG.md` - release history
 
 ## Architecture
 
@@ -287,5 +296,3 @@ for direct transport (~340 MB/s on loopback).
 - End-to-end encryption is identical regardless of transport path -- the relay is always payload-blind.
 - Direct P2P is the default. Relay is the fallback. Use `--relay-only` to force relay transport.
 - If docs and code disagree, the docs are stale. Fix both in the same change.
-
-For the execution manual and current TODO lane, start with [`BUILD.md`](BUILD.md).

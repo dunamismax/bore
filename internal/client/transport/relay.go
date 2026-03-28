@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/dunamismax/bore/internal/roomid"
 	"nhooyr.io/websocket"
 )
 
@@ -54,6 +55,10 @@ func (d *RelayDialer) DialSender(ctx context.Context) (string, Conn, error) {
 	}
 
 	roomID := string(data)
+	if err := roomid.Validate(roomID); err != nil {
+		conn.Close(websocket.StatusProtocolError, "invalid room ID")
+		return "", nil, fmt.Errorf("invalid room ID from relay: %w", err)
+	}
 	return roomID, &wsConn{conn: conn, ctx: ctx}, nil
 }
 
@@ -152,6 +157,9 @@ func BuildWSURL(relayURL, roomID string) (string, error) {
 	u.Path = "/ws"
 
 	if roomID != "" {
+		if err := roomid.Validate(roomID); err != nil {
+			return "", fmt.Errorf("invalid room ID: %w", err)
+		}
 		q := url.Values{}
 		q.Set("room", roomID)
 		u.RawQuery = q.Encode()

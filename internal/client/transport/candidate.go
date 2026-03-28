@@ -16,7 +16,7 @@ import (
 // to decide whether and how to attempt a direct connection.
 //
 // The candidate exchange is the first step of the relay-coordinated
-// peer-candidate exchange defined in Phase 1 of BUILD.md.
+// direct-path negotiation flow.
 type Candidate struct {
 	// PublicAddr is the peer's STUN-discovered public UDP address.
 	// Format: "ip:port".

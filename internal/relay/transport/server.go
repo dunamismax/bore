@@ -22,6 +22,7 @@ import (
 	"github.com/dunamismax/bore/internal/relay/ratelimit"
 	"github.com/dunamismax/bore/internal/relay/room"
 	"github.com/dunamismax/bore/internal/relay/webui"
+	"github.com/dunamismax/bore/internal/roomid"
 	"nhooyr.io/websocket"
 )
 
@@ -310,9 +311,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	roomID := r.URL.Query().Get("room")
 	if roomID == "" {
 		s.handleSender(w, r)
-	} else {
-		s.handleReceiver(w, r, roomID)
+		return
 	}
+	if err := roomid.Validate(roomID); err != nil {
+		http.Error(w, "invalid room ID", http.StatusBadRequest)
+		return
+	}
+	s.handleReceiver(w, r, roomID)
 }
 
 // handleSender creates a new room, sends the room ID to the sender as a
@@ -461,6 +466,10 @@ func (s *Server) handleSignal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing room or invalid role", http.StatusBadRequest)
 		return
 	}
+	if err := roomid.Validate(roomID); err != nil {
+		http.Error(w, "invalid room ID", http.StatusBadRequest)
+		return
+	}
 
 	// Rate limiting.
 	if s.signalLimiter != nil {
@@ -471,6 +480,14 @@ func (s *Server) handleSignal(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
+	}
+
+	s.mu.Lock()
+	_, roomExists := s.pending[roomID]
+	s.mu.Unlock()
+	if !roomExists {
+		http.Error(w, "room not found", http.StatusNotFound)
+		return
 	}
 
 	conn, err := websocket.Accept(w, r, nil)

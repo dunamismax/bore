@@ -490,7 +490,7 @@ func TestRelay_BidirectionalConcurrent(t *testing.T) {
 	wg.Wait()
 }
 
-func TestRelay_InvalidRoomID(t *testing.T) {
+func TestRelay_UnknownRoomID(t *testing.T) {
 	_, ts := testServer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -500,8 +500,22 @@ func TestRelay_InvalidRoomID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for nonexistent room")
 	}
-	if resp != nil && resp.StatusCode != 404 {
+	if resp != nil && resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestRelay_InvalidRoomID(t *testing.T) {
+	_, ts := testServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, resp, err := websocket.Dial(ctx, wsURL(ts, "/ws?room=bad/id"), nil)
+	if err == nil {
+		t.Fatal("expected error for invalid room ID")
+	}
+	if resp != nil && resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
 }
 

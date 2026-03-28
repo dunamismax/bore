@@ -16,6 +16,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"strings"
+
+	"github.com/dunamismax/bore/internal/roomid"
 )
 
 // Constants for the current Go rendezvous code model.
@@ -276,8 +278,8 @@ func ParseFull(codeStr, relayURL string) (FullRendezvousCode, error) {
 	}
 
 	roomID := strings.Join(parts[:splitIdx], "-")
-	if roomID == "" {
-		return FullRendezvousCode{}, fmt.Errorf("rendezvous code has empty room ID")
+	if err := roomid.Validate(roomID); err != nil {
+		return FullRendezvousCode{}, fmt.Errorf("invalid room ID: %w", err)
 	}
 
 	pakeStr := strings.Join(parts[splitIdx:], "-")

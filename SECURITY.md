@@ -80,6 +80,8 @@ Implemented relay guardrails:
 - concurrent room count is bounded by registry configuration
 - WebSocket message size is capped at 64 MB per frame
 - per-IP rate limiting on `/ws` and `/signal` endpoints (default: 30 requests/minute)
+- room ID validation on relay join and signaling endpoints
+- signaling only binds to live relay rooms created by a sender
 - explicit HTTP server timeouts: read (30s), write (30s), idle (120s), read header (10s)
 - max header size limited to 1 MB
 - operational metrics tracked via atomic counters and exposed at `/metrics`

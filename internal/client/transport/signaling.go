@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/url"
 
+	"github.com/dunamismax/bore/internal/roomid"
 	"nhooyr.io/websocket"
 )
 
@@ -96,6 +97,13 @@ func ExchangeCandidates(ctx context.Context, relayURL, roomID, role string, loca
 
 // buildSignalURL constructs the WebSocket URL for the signaling endpoint.
 func buildSignalURL(relayURL, roomID, role string) (string, error) {
+	if err := roomid.Validate(roomID); err != nil {
+		return "", fmt.Errorf("invalid room ID: %w", err)
+	}
+	if role != "sender" && role != "receiver" {
+		return "", fmt.Errorf("invalid role %q", role)
+	}
+
 	u, err := url.Parse(relayURL)
 	if err != nil {
 		return "", fmt.Errorf("parse relay URL: %w", err)

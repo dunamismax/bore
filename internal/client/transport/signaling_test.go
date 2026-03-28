@@ -55,6 +55,20 @@ func TestBuildSignalURL(t *testing.T) {
 			role:    "sender",
 			wantErr: true,
 		},
+		{
+			name:    "invalid room",
+			relay:   "http://localhost:8080",
+			room:    "bad/id",
+			role:    "sender",
+			wantErr: true,
+		},
+		{
+			name:    "invalid role",
+			relay:   "http://localhost:8080",
+			room:    "r1",
+			role:    "admin",
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

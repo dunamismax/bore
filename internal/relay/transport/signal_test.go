@@ -195,6 +195,7 @@ func TestSignal_MissingParams(t *testing.T) {
 		{"no room", "/signal?role=sender"},
 		{"no role", "/signal?room=abc"},
 		{"bad role", "/signal?room=abc&role=admin"},
+		{"invalid room format", "/signal?room=bad/id&role=sender"},
 	}
 
 	for _, tt := range tests {
@@ -213,6 +214,20 @@ func TestSignal_MissingParams(t *testing.T) {
 }
 
 // TestSignal_Cleanup verifies signaling state is cleaned up after exchange.
+func TestSignal_UnknownRoom(t *testing.T) {
+	_, ts := testServer(t)
+
+	resp, err := http.Get(ts.URL + "/signal?room=missing-room&role=sender")
+	if err != nil {
+		t.Fatalf("GET /signal unknown room: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
 func TestSignal_Cleanup(t *testing.T) {
 	srv, ts := testServer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
