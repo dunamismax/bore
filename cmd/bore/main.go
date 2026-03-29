@@ -21,7 +21,7 @@ import (
 	"github.com/dunamismax/bore/internal/client/transport"
 )
 
-const version = "1.0.0"
+const version = "1.0.1"
 
 func main() {
 	// Global verbose flag (must be parsed before subcommand).

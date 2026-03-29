@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-03-29
+
+Patch release focused on relay input validation, browser-surface hardening, and docs cleanup after v1.0.0.
+
+### Security
+
+- Added shared room ID validation across client and relay paths so malformed room IDs are rejected before WebSocket or signaling setup.
+- Limited `/signal` exchanges to live relay rooms created by a sender.
+- Added restrictive browser headers on relay and frontend responses (`Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`) and disabled caching for live operator surfaces.
+- Validated `BORE_RELAY_URL` as a bare relay origin in the frontend so relay endpoint composition stays explicit.
+
+### Documentation
+
+- Removed stale `BUILD.md` references and aligned README, architecture, and security docs with the separate frontend process.
+
 ## [1.0.0] - 2026-03-25
 
 Production release. Bore ships P2P encrypted file transfer with QUIC direct transport, automatic relay fallback, Noise XXpsk0 end-to-end encryption, resumable transfers, an operator dashboard, and a full test suite with race detection clean.
@@ -160,6 +175,7 @@ First tagged release. Phases 0-3 are complete: relay-based encrypted file transf
 - The verified transfer path is **relay-based**. Direct transport is implemented but pending real-world NAT validation; relay remains the default.
 - Directory transfer, authenticated operator workflows, and external security review are planned for future releases.
 
+[1.0.1]: https://github.com/dunamismax/bore/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/dunamismax/bore/compare/v0.2.0...v1.0.0
 [0.2.0]: https://github.com/dunamismax/bore/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/dunamismax/bore/releases/tag/v0.1.0

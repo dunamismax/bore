@@ -15,7 +15,7 @@ The repo also ships a separate operator dashboard process built with Python, Fas
 
 ## Status
 
-**v1.0.0** -- production release. Current truth:
+**v1.0.1** -- current stable release with relay and browser-surface hardening. Current truth:
 
 - the repo is one Go module rooted at `github.com/dunamismax/bore`
 - binaries live under `cmd/`: `bore`, `relay`, `bore-admin`, and `punchthrough`
