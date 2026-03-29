@@ -1,3 +1,4 @@
+// Package roomid validates relay room IDs shared across web and Go surfaces.
 package roomid
 
 import "fmt"
