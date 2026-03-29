@@ -33,12 +33,23 @@ def client() -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
 
+def assert_security_headers(resp) -> None:
+    csp = resp.headers["content-security-policy"]
+    assert "default-src 'self'" in csp
+    assert "script-src 'self' https://unpkg.com" in csp
+    assert "frame-ancestors 'none'" in csp
+    assert resp.headers["x-content-type-options"] == "nosniff"
+    assert resp.headers["x-frame-options"] == "DENY"
+    assert resp.headers["referrer-policy"] == "no-referrer"
+
+
 class TestHomePage:
     def test_returns_html(self, client: TestClient) -> None:
         resp = client.get("/")
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
         assert "bore" in resp.text
+        assert_security_headers(resp)
 
     def test_contains_product_content(self, client: TestClient) -> None:
         resp = client.get("/")
@@ -54,6 +65,8 @@ class TestOpsRelayPage:
         assert resp.status_code == 200
         assert "bore-relay" in resp.text
         assert "Signal exchanges" in resp.text
+        assert resp.headers["cache-control"] == "no-store"
+        assert_security_headers(resp)
 
     def test_renders_error_on_failure(self, client: TestClient) -> None:
         with patch("app.routes.pages.fetch_status", new_callable=AsyncMock) as mock:
@@ -70,6 +83,8 @@ class TestRelayStatusPartial:
             resp = client.get("/partials/relay-status")
         assert resp.status_code == 200
         assert "bore-relay" in resp.text
+        assert resp.headers["cache-control"] == "no-store"
+        assert_security_headers(resp)
         # Partial should not contain full HTML structure
         assert "<!DOCTYPE" not in resp.text
 
@@ -86,3 +101,4 @@ class TestNotFound:
         resp = client.get("/nonexistent-route")
         assert resp.status_code == 404
         assert "404" in resp.text
+        assert_security_headers(resp)

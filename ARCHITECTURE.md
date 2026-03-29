@@ -44,7 +44,7 @@ bore is a **P2P-first, relay-fallback** encrypted file transfer tool. The defaul
 ### Component roles
 
 1. **Client (`cmd/bore` + `internal/client/`)** generates or parses a rendezvous code, discovers peers via STUN, exchanges candidates through the relay's signaling channel, attempts direct hole-punching, falls back to relay if needed, performs the Noise handshake, and streams encrypted file data.
-2. **Relay (`cmd/relay` + `internal/relay/`)** provides the signaling endpoint for P2P candidate exchange, serves as a fallback transport by forwarding encrypted frames over WebSockets, manages rooms, and serves the embedded browser surface.
+2. **Relay (`cmd/relay` + `internal/relay/`)** provides the signaling endpoint for P2P candidate exchange, serves as a fallback transport by forwarding encrypted frames over WebSockets, manages rooms, and serves a minimal landing page plus operator endpoints.
 3. **Frontend (`frontend/`)** provides the product-facing homepage and a read-only relay ops page, built with Python + FastAPI + Jinja2 + htmx (no JavaScript build step).
 4. **Punchthrough (`cmd/punchthrough` + `internal/punchthrough/`)** contains STUN and UDP hole-punching primitives, integrated into the client's default transport path.
 5. **bore-admin (`cmd/bore-admin`)** is a minimal operator CLI that queries relay status.
@@ -248,7 +248,7 @@ WebSocket server / connection handling
 ├── /signal endpoint (P2P signaling -- primary purpose)
 ├── /ws endpoint (fallback transport -- encrypted byte forwarding)
 ├── /healthz, /status, /metrics (operator endpoints)
-└── / and /ops/relay (embedded browser surface)
+└── / (minimal relay landing page)
   ↓
 room registry + room lifecycle
 ```
@@ -266,7 +266,8 @@ Owns:
 - `/healthz`, `/status`, and `/metrics` operator endpoints
 - per-IP rate limiting on `/ws` and `/signal` endpoints
 - explicit HTTP server timeouts
-- same-origin serving for the embedded static web UI
+- restrictive browser headers on HTTP responses
+- minimal landing page serving at `/`
 
 Design constraints:
 
@@ -367,14 +368,16 @@ The frontend is a separate Python process (FastAPI + Jinja2 + htmx) that fetches
 
 - `frontend/src/app/routes` -- FastAPI route handlers for homepage, relay ops, 404
 - `frontend/src/app/templates` -- Jinja2 templates with htmx for live-updating relay status
-- `frontend/src/app/static` -- static CSS via Tailwind CDN (no JavaScript build step)
+- `frontend/src/app/static` -- minimal local static assets; htmx and Tailwind load from pinned CDNs (no JavaScript build step)
 - `frontend/tests` -- pytest test coverage
 
 Design constraints:
 
 - keep the web surface read-only
 - fetch relay data from the Go relay's `/status`, `/healthz`, `/metrics` endpoints
+- require `BORE_RELAY_URL` to be a bare relay origin so frontend endpoint composition stays unambiguous
 - keep the browser story aligned with the actual P2P-first product truth
+- emit restrictive browser headers that match the read-only surface
 - no JavaScript build step
 
 ---

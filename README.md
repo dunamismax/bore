@@ -8,10 +8,10 @@ bore moves a file between two machines with a short human-readable rendezvous co
 
 All file data is end-to-end encrypted with Noise XXpsk0 regardless of transport path. The relay is payload-blind -- it forwards encrypted bytes without any ability to inspect file contents.
 
-The repo also ships an operator dashboard built with Python, FastAPI, Jinja2, and htmx (no JavaScript build step):
+The repo also ships a separate operator dashboard process built with Python, FastAPI, Jinja2, and htmx (no JavaScript build step):
 
-- `/` is the Bore homepage
-- `/ops/relay` is a live operator page backed by the relay's `/status` endpoint with htmx auto-refresh
+- `/` is the Bore homepage served by the frontend
+- `/ops/relay` is a live operator page served by the frontend and backed by the relay's `/status` endpoint with htmx auto-refresh
 
 ## Status
 
@@ -48,7 +48,7 @@ The repo also ships an operator dashboard built with Python, FastAPI, Jinja2, an
 - per-IP rate limiting on relay `/ws` and `/signal` endpoints
 - room ID validation on relay join/signaling paths, with signaling limited to live relay rooms
 - explicit HTTP server timeouts (read, write, idle, header)
-- FastAPI + Jinja2 + htmx operator dashboard at `/` and `/ops/relay`
+- FastAPI + Jinja2 + htmx operator dashboard at `/` and `/ops/relay` in the separate frontend process
 - `bore-admin status` relay polling
 - deployment packaging (Dockerfile, systemd service unit)
 - standalone `punchthrough` CLI for NAT probing
@@ -122,6 +122,8 @@ The relay serves as:
 ```bash
 cd frontend && BORE_RELAY_URL=http://127.0.0.1:8080 uv run uvicorn app.main:app --host 127.0.0.1 --port 3000 --app-dir src
 ```
+
+`BORE_RELAY_URL` must be the bare relay origin (for example `http://127.0.0.1:8080`), not `/status` or another API path.
 
 With both running:
 

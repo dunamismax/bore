@@ -31,6 +31,8 @@ import (
 // and protects the server from pathological single-message payloads.
 const maxMessageSize = 64 << 20 // 64 MB
 
+const relayContentSecurityPolicy = "default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+
 // Server handles WebSocket connections and relays data between paired peers.
 type Server struct {
 	registry *room.Registry
@@ -172,9 +174,11 @@ func NewServer(cfg ServerConfig) *Server {
 	mux.HandleFunc("/signal", s.handleSignal)
 	mux.Handle("/", webui.NewHandler())
 
+	handler := securityHeadersMiddleware(mux)
+
 	s.httpSrv = &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           mux,
+		Handler:           handler,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,
 		IdleTimeout:       cfg.IdleTimeout,
@@ -244,6 +248,17 @@ type statusLimits struct {
 	RoomTTLSeconds      int64 `json:"roomTTLSeconds"`
 	ReapIntervalSeconds int64 `json:"reapIntervalSeconds"`
 	MaxMessageSizeBytes int64 `json:"maxMessageSizeBytes"`
+}
+
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Content-Security-Policy", relayContentSecurityPolicy)
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

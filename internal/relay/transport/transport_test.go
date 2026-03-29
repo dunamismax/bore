@@ -127,6 +127,70 @@ func TestRelay_WebSurface(t *testing.T) {
 	}
 }
 
+func TestRelay_HTTPHeaders(t *testing.T) {
+	_, ts := testServer(t)
+
+	tests := []struct {
+		path        string
+		contentType string
+		cspContains []string
+	}{
+		{
+			path:        "/",
+			contentType: "text/html",
+			cspContains: []string{"default-src 'none'", "style-src 'unsafe-inline'", "frame-ancestors 'none'"},
+		},
+		{
+			path:        "/healthz",
+			contentType: "application/json",
+			cspContains: []string{"default-src 'none'"},
+		},
+		{
+			path:        "/status",
+			contentType: "application/json",
+			cspContains: []string{"default-src 'none'"},
+		},
+		{
+			path:        "/metrics",
+			contentType: "application/json",
+			cspContains: []string{"default-src 'none'"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			resp, err := http.Get(ts.URL + tt.path)
+			if err != nil {
+				t.Fatalf("GET %s: %v", tt.path, err)
+			}
+			defer resp.Body.Close()
+
+			if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+				t.Fatalf("%s Cache-Control = %q, want %q", tt.path, got, "no-store")
+			}
+			if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Fatalf("%s X-Content-Type-Options = %q, want %q", tt.path, got, "nosniff")
+			}
+			if got := resp.Header.Get("X-Frame-Options"); got != "DENY" {
+				t.Fatalf("%s X-Frame-Options = %q, want %q", tt.path, got, "DENY")
+			}
+			if got := resp.Header.Get("Referrer-Policy"); got != "no-referrer" {
+				t.Fatalf("%s Referrer-Policy = %q, want %q", tt.path, got, "no-referrer")
+			}
+			if got := resp.Header.Get("Content-Type"); !strings.Contains(got, tt.contentType) {
+				t.Fatalf("%s Content-Type = %q, want substring %q", tt.path, got, tt.contentType)
+			}
+
+			csp := resp.Header.Get("Content-Security-Policy")
+			for _, want := range tt.cspContains {
+				if !strings.Contains(csp, want) {
+					t.Fatalf("%s Content-Security-Policy = %q, want substring %q", tt.path, csp, want)
+				}
+			}
+		})
+	}
+}
+
 // dialSender connects as a sender and returns the WebSocket conn and the room ID.
 func dialSender(t *testing.T, ctx context.Context, ts *httptest.Server) (*websocket.Conn, string) {
 	t.Helper()
