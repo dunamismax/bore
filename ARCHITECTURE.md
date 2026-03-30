@@ -46,8 +46,9 @@ bore is a **P2P-first, relay-fallback** encrypted file transfer tool. The defaul
 1. **Client (`cmd/bore` + `internal/client/`)** generates or parses a rendezvous code, discovers peers via STUN, exchanges candidates through the relay's signaling channel, attempts direct hole-punching, falls back to relay if needed, performs the Noise handshake, and streams encrypted file data.
 2. **Relay (`cmd/relay` + `internal/relay/`)** provides the signaling endpoint for P2P candidate exchange, serves as a fallback transport by forwarding encrypted frames over WebSockets, manages rooms, exposes operator endpoints, and serves the built web frontend same-origin when `web/dist` is present.
 3. **Web frontend (`web/`)** provides the product-facing homepage and a read-only relay ops page, built with Astro + Vue on Bun and consumed as static assets by the Go relay.
-4. **Punchthrough (`cmd/punchthrough` + `internal/punchthrough/`)** contains STUN and UDP hole-punching primitives, integrated into the client's default transport path.
-5. **bore-admin (`cmd/bore-admin`)** is a minimal operator CLI that queries relay status.
+4. **Operator TUI (`tui/`)** is the primary terminal operator surface, built with OpenTUI on Bun and fed by the relay's Go-owned `/status` contract.
+5. **Punchthrough (`cmd/punchthrough` + `internal/punchthrough/`)** contains STUN and UDP hole-punching primitives, integrated into the client's default transport path.
+6. **bore-admin (`cmd/bore-admin`)** remains a compatibility CLI that queries relay status while the OpenTUI operator lane settles.
 
 ---
 
@@ -87,6 +88,13 @@ web/
 │   └── styles/              # global CSS
 ├── tests/                   # Bun test coverage for contract helpers
 └── package.json             # Bun-managed web frontend
+
+tui/
+├── src/
+│   ├── lib/                 # relay status contract helpers and formatting
+│   └── main.ts              # OpenTUI entry point and dashboard wiring
+├── tests/                   # Bun test coverage for view-model and formatting
+└── package.json             # Bun-managed OpenTUI operator console
 
 frontend/
 ├── src/                     # legacy Python frontend retained during migration
@@ -390,9 +398,27 @@ Design constraints:
 
 ---
 
+## Operator TUI (`tui/`)
+
+The active terminal operator surface lives in `tui/` and is built with OpenTUI on Bun.
+
+- it reads the relay's Go-owned `/status` payload over plain HTTP and does not wrap or reimplement transfer logic
+- it owns presentation concerns such as live refresh cadence, room gauges, direct-vs-relay summaries, and clear stale/error states
+- it keeps the terminal story operator-first and read-only, matching the web relay status boundary
+- it exists to replace `bore-admin` as the primary terminal surface once the lane proves stable
+
+Design constraints:
+
+- keep the data path boring: relay HTTP only, no sidecar backend
+- keep relay semantics owned by Go, not duplicated in TypeScript beyond view-model calculations
+- make failure states obvious without discarding the last good snapshot
+- keep the terminal lane focused on observability, not control-plane actions
+
+---
+
 ## Admin Surface (`cmd/bore-admin`)
 
-A small operator CLI that queries the relay `/status` endpoint. It is not an operational dependency of the relay or client.
+A small compatibility CLI that queries the relay `/status` endpoint. It is not an operational dependency of the relay or client, and it remains intentionally smaller than the OpenTUI operator lane.
 
 ---
 

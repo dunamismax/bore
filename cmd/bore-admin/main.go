@@ -86,8 +86,8 @@ func fetchStatus(relayURL string, timeout time.Duration) (*relaystatus.Response,
 }
 
 func printStatus(relayURL string, status *relaystatus.Response) {
-	fmt.Println("bore-admin")
-	fmt.Println("==========")
+	fmt.Println("bore-admin (compatibility shim)")
+	fmt.Println("=============================")
 	fmt.Println()
 	fmt.Println("relay:   " + relayURL)
 	fmt.Println("service: " + status.Service)
@@ -117,6 +117,8 @@ func printStatus(relayURL string, status *relaystatus.Response) {
 	fmt.Printf("  room ttl:        %s\n", formatDurationSeconds(status.Limits.RoomTTLSeconds))
 	fmt.Printf("  reap interval:   %s\n", formatDurationSeconds(status.Limits.ReapIntervalSeconds))
 	fmt.Printf("  max ws message:  %d bytes\n", status.Limits.MaxMessageSizeBytes)
+	fmt.Println()
+	fmt.Printf("hint: for live refresh, room gauges, and failure states, run: cd tui && bun run start --relay %s\n", relayURL)
 }
 
 func formatDurationSeconds(seconds int64) string {
@@ -127,7 +129,10 @@ func formatDurationSeconds(seconds int64) string {
 }
 
 func printHelp() {
-	fmt.Println("bore-admin -- minimal relay operator CLI")
+	fmt.Println("bore-admin -- compatibility relay operator CLI")
+	fmt.Println()
+	fmt.Println("This remains for terminal compatibility while the OpenTUI operator lane in tui/ settles.")
+	fmt.Println("For live refresh, room gauges, and clearer failure handling, use: cd tui && bun run start")
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  bore-admin status [--relay URL] [--timeout 5s]")

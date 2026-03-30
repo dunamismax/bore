@@ -27,14 +27,15 @@ This file tracks bore's frontend migration status and remaining work.
 - `web/` is the shipped **TypeScript + Bun + Astro + Vue** browser surface.
 - `cmd/relay` serves the built `web/dist` output same-origin at `/` and `/ops/relay`, with an explicit fallback page when web assets are missing.
 - `frontend/` still exists as a **Python + FastAPI + Jinja2 + htmx** legacy reference, but it is no longer the shipped browser surface.
-- `bore-admin` is still the only terminal operator surface today.
+- `tui/` is now the primary terminal operator surface for relay observability.
+- `bore-admin` remains as a smaller compatibility shim.
 - The relay already exposes the operator data frontends need: `/status`, `/healthz`, `/metrics`.
 - The `/status` contract is documented in `docs/status-contract.md` and covered by Go tests.
 - There is **no durable service database** today:
   - relay state is in memory
   - receiver resume state is local JSON on disk
-- There is **no `tui/` app yet**.
-- CI still validates the legacy Python frontend and does **not** yet validate `web/` or a future `tui/`.
+- `tui/` now exists as an **OpenTUI + TypeScript + Bun** operator console over the relay's Go-owned `/status` endpoint.
+- CI still validates the legacy Python frontend and does **not** yet validate `web/` or `tui/`.
 
 ## Target state
 
@@ -116,7 +117,7 @@ Delete `frontend/` during the cleanup phase once the legacy reference and its Py
 - [x] **Phase 0 - Freeze the frontend contract**
   - Goal: make the migration boring.
   - [x] Choose `web/` as the shipped web root and `tui/` as the planned terminal root.
-    - `web/` is live today. `tui/` is still a planned path, not an implemented directory.
+    - `web/` and `tui/` now both exist as the active frontend lanes for this migration path.
   - [x] Inventory every `/status` field used by the legacy Python frontend and `bore-admin`.
     - `docs/status-contract.md` records the field inventory and consumer matrix.
   - [x] Document the Go-owned frontend contract in repo docs or tests.
@@ -140,16 +141,16 @@ Delete `frontend/` during the cleanup phase once the legacy reference and its Py
   - [x] Exit criterion: the web frontend reads relay data cleanly from the Go backend.
   - [x] Exit criterion: the shipped browser surface no longer depends on Python.
 
-- [ ] **Phase 2 - Add the OpenTUI operator console**
+- [x] **Phase 2 - Add the OpenTUI operator console**
   - Goal: give bore a real terminal operator surface instead of a thin polling CLI.
-  - [ ] Build an OpenTUI app focused on relay observability first.
-  - [ ] Cover current `bore-admin status` scope plus live refresh, room gauges, direct vs relay counts, and clear failure states.
-  - [ ] Keep the boundary boring: HTTP to relay endpoints or a thin local wrapper around them.
-  - [ ] Keep `bore-admin` as a compatibility shim until the TUI proves stable.
-    - Today `bore-admin` is still a standalone minimal CLI because no TUI exists yet.
-  - [ ] Exit criterion: there is a usable TUI for relay operators.
-  - [ ] Exit criterion: `bore-admin` is either a thin wrapper into the TUI or clearly marked for deprecation.
-  - [ ] Exit criterion: the TUI owns presentation, not backend logic.
+  - [x] Build an OpenTUI app focused on relay observability first.
+  - [x] Cover current `bore-admin status` scope plus live refresh, room gauges, direct vs relay counts, and clear failure states.
+  - [x] Keep the boundary boring: HTTP to relay endpoints or a thin local wrapper around them.
+  - [x] Keep `bore-admin` as a compatibility shim until the TUI proves stable.
+    - `bore-admin` now stays intentionally smaller and points operators at `tui/` for the richer live surface.
+  - [x] Exit criterion: there is a usable TUI for relay operators.
+  - [x] Exit criterion: `bore-admin` is either a thin wrapper into the TUI or clearly marked for deprecation.
+  - [x] Exit criterion: the TUI owns presentation, not backend logic.
 
 - [ ] **Phase 3 - Consolidate packaging, CI, and docs**
   - Goal: finish the stack cutover cleanly.
@@ -157,8 +158,8 @@ Delete `frontend/` during the cleanup phase once the legacy reference and its Py
   - [ ] Update CI to check `web/` and `tui/`.
     - Current CI still runs the `frontend/` Python job and has no `web/` or `tui/` job.
   - [ ] Update README, ARCHITECTURE, and deployment docs to reflect the final frontend lanes.
-    - README, ARCHITECTURE, Dockerfile, and relay-side web serving already describe the Astro web lane.
-    - This phase is still open because the repo still carries the legacy Python frontend and there is no TUI lane to document yet.
+    - README and ARCHITECTURE now describe the Astro web lane and the OpenTUI operator lane.
+    - This phase is still open because the repo still carries the legacy Python frontend, CI has not been updated for the frontend lanes, and deployment docs still need full cleanup.
   - [x] Decide whether relay `/` serves Astro-built assets directly or redirects to a separately hosted web frontend.
     - Current decision: direct same-origin serving from `cmd/relay`.
   - [ ] Remove stale commands, paths, and implementation claims in the same change.
@@ -180,7 +181,7 @@ Delete `frontend/` during the cleanup phase once the legacy reference and its Py
 
 - [x] Phase 0
 - [x] Phase 1
-- [ ] Phase 2
+- [x] Phase 2
 - [ ] Phase 3
 - [ ] Phase 4 only if operator usage proves the need
 

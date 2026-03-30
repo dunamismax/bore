@@ -7,7 +7,8 @@ Phase 0 inventory for the frontend migration found two live consumers of this pa
 - the legacy Python browser surface at `frontend/src/app/templates/partials/relay_status.html`
 - `cmd/bore-admin`
 
-Phase 1 keeps the same contract for the new browser surface at `web/src/components/RelayStatusPanel.vue`.
+Phase 1 kept the same contract for the new browser surface at `web/src/components/RelayStatusPanel.vue`.
+Phase 2 adds the OpenTUI operator surface in `tui/` as another consumer of the same Go-owned payload.
 
 ## Contract shape
 
@@ -39,23 +40,23 @@ Phase 1 keeps the same contract for the new browser surface at `web/src/componen
 
 ## Field inventory
 
-| Field | Used by current Python frontend | Used by `bore-admin` | Used by Astro `/ops/relay` |
-| --- | --- | --- | --- |
-| `service` | yes | yes | yes |
-| `status` | yes | yes | yes |
-| `uptimeSeconds` | yes | yes | yes |
-| `rooms.total` | yes | yes | yes |
-| `rooms.waiting` | yes | yes | yes |
-| `rooms.active` | yes | yes | yes |
-| `limits.maxRooms` | yes | yes | yes |
-| `limits.roomTTLSeconds` | yes | yes | yes |
-| `limits.reapIntervalSeconds` | yes | yes | yes |
-| `limits.maxMessageSizeBytes` | yes | yes | yes |
-| `transport.signalExchanges` | yes | yes | yes |
-| `transport.signalingStarted` | yes | yes | yes |
-| `transport.roomsRelayed` | yes | yes | yes |
-| `transport.bytesRelayed` | yes | yes | yes |
-| `transport.framesRelayed` | yes | yes | yes |
+| Field | Used by current Python frontend | Used by `bore-admin` | Used by Astro `/ops/relay` | Used by `tui/` |
+| --- | --- | --- | --- | --- |
+| `service` | yes | yes | yes | yes |
+| `status` | yes | yes | yes | yes |
+| `uptimeSeconds` | yes | yes | yes | yes |
+| `rooms.total` | yes | yes | yes | yes |
+| `rooms.waiting` | yes | yes | yes | yes |
+| `rooms.active` | yes | yes | yes | yes |
+| `limits.maxRooms` | yes | yes | yes | yes |
+| `limits.roomTTLSeconds` | yes | yes | yes | yes |
+| `limits.reapIntervalSeconds` | yes | yes | yes | yes |
+| `limits.maxMessageSizeBytes` | yes | yes | yes | yes |
+| `transport.signalExchanges` | yes | yes | yes | yes |
+| `transport.signalingStarted` | yes | yes | yes | yes |
+| `transport.roomsRelayed` | yes | yes | yes | yes |
+| `transport.bytesRelayed` | yes | yes | yes | yes |
+| `transport.framesRelayed` | yes | yes | yes | yes |
 
 ## Source of truth
 

@@ -13,6 +13,8 @@ The relay now serves a same-origin browser surface built with Astro + Vue from `
 - `/` is the Bore homepage served by the Go relay from the built web assets
 - `/ops/relay` is a live read-only operator page backed by the relay's Go-owned `/status` endpoint
 
+The primary terminal operator surface now lives in `tui/` as an OpenTUI console over that same `/status` contract.
+
 ## Status
 
 **v1.0.1** -- current stable release with relay and browser-surface hardening. Current truth:
@@ -21,6 +23,7 @@ The relay now serves a same-origin browser surface built with Astro + Vue from `
 - binaries live under `cmd/`: `bore`, `relay`, `bore-admin`, and `punchthrough`
 - shared Go packages live under `internal/`: `client`, `relay`, and `punchthrough`
 - the active browser surface lives in `web/` (Astro + Vue on Bun), served same-origin by `cmd/relay`
+- the active terminal operator surface lives in `tui/` (OpenTUI on Bun), pointed at the relay's Go-owned `/status` endpoint
 - `frontend/` remains in the repo only as a legacy reference during the migration
 - **direct P2P is the default transfer path** -- STUN discovery, signaling, hole-punching
 - **QUIC-based direct transport** with production-quality congestion control (default)
@@ -50,7 +53,8 @@ The relay now serves a same-origin browser surface built with Astro + Vue from `
 - room ID validation on relay join/signaling paths, with signaling limited to live relay rooms
 - explicit HTTP server timeouts (read, write, idle, header)
 - Astro + Vue browser surface at `/` and `/ops/relay`, served same-origin by the relay from built static assets
-- `bore-admin status` relay polling
+- OpenTUI relay operator console in `tui/` with live refresh, room gauges, direct-vs-relay summaries, and clear stale/error states
+- `bore-admin status` relay polling as a compatibility shim
 - deployment packaging (Dockerfile, systemd service unit)
 - standalone `punchthrough` CLI for NAT probing
 
@@ -61,9 +65,10 @@ The relay now serves a same-origin browser surface built with Astro + Vue from `
 | `bore` client | `cmd/bore`, `internal/client/` | active | P2P QUIC direct transport, relay fallback, crypto, transfer engine, CLI |
 | `relay` | `cmd/relay`, `internal/relay/` | active | Signaling server for P2P connections, fallback transport, room broker |
 | `web` | `web/` | active | Astro + Vue homepage and read-only relay operator surface |
+| `tui` | `tui/` | active | OpenTUI relay operator console for live status, room gauges, and transport mix |
 | `frontend` | `frontend/` | legacy reference | Previous FastAPI + Jinja2 + htmx browser surface retained during migration |
 | `punchthrough` | `cmd/punchthrough`, `internal/punchthrough/` | active, integrated | NAT probing, STUN discovery, UDP hole-punching -> QUIC transport |
-| `bore-admin` | `cmd/bore-admin` | active | Minimal operator CLI for relay health and status polling |
+| `bore-admin` | `cmd/bore-admin` | compatibility shim | Minimal relay status CLI kept while the OpenTUI lane settles |
 
 ## Data layer stance
 
@@ -71,7 +76,8 @@ Bore's relay path does not need a durable database today.
 
 - `internal/relay/room` keeps live room state in memory only.
 - `web/` is a read-only browser surface that consumes the relay's live `/status` snapshot.
-- `bore-admin` is a stateless CLI over that same `/status` endpoint.
+- `tui/` is the primary terminal operator surface over that same `/status` endpoint.
+- `bore-admin` is a smaller stateless compatibility CLI over that same `/status` endpoint.
 - resumable transfer checkpoint state is persisted as JSON on the receiver's filesystem (not in a database).
 - transfer history and persisted operator history are not implemented yet.
 
@@ -140,13 +146,21 @@ cd web
 bun run dev
 ```
 
-### 5. Check relay status from the CLI
+### 5. Run the operator TUI
+
+```bash
+cd tui
+bun install
+bun run start --relay http://127.0.0.1:8080
+```
+
+### 6. Check relay status from the compatibility CLI
 
 ```bash
 go run ./cmd/bore-admin status --relay http://127.0.0.1:8080
 ```
 
-### 6. Send a file
+### 7. Send a file
 
 ```bash
 ./bore send ./report.pdf --relay http://127.0.0.1:8080
@@ -169,13 +183,13 @@ SHA-256: a1b2c3...
 Transport: transport=direct
 ```
 
-### 7. Receive the file on the other machine
+### 8. Receive the file on the other machine
 
 ```bash
 ./bore receive Ahcj7nQZclo-j15A_xGS8w-868-outer-crane-crane --relay http://127.0.0.1:8080
 ```
 
-### 8. Force relay-only transport
+### 9. Force relay-only transport
 
 ```bash
 ./bore send ./report.pdf --relay http://127.0.0.1:8080 --relay-only
@@ -187,6 +201,16 @@ Transport: transport=direct
 
 ```bash
 cd web
+bun install
+bun run lint
+bun run check
+bun test
+```
+
+### Operator TUI
+
+```bash
+cd tui
 bun install
 bun run lint
 bun run check
@@ -256,6 +280,11 @@ go build ./cmd/bore-admin
 │   │   └── styles/
 │   ├── tests/
 │   └── package.json
+├── tui/
+│   ├── src/
+│   │   └── lib/
+│   ├── tests/
+│   └── package.json
 ├── frontend/                # legacy reference during migration
 ├── docs/
 ├── ARCHITECTURE.md
@@ -268,7 +297,7 @@ go build ./cmd/bore-admin
 - `README.md` - current product status, quick start, and verification commands
 - `ARCHITECTURE.md` - system layout, transport layering, and design notes
 - `SECURITY.md` - threat model, implemented guardrails, and current limits
-- `docs/status-contract.md` - Go-owned `/status` contract consumed by the browser surface and `bore-admin`
+- `docs/status-contract.md` - Go-owned `/status` contract consumed by the browser surface, `tui/`, and `bore-admin`
 - `CHANGELOG.md` - release history
 
 ## Architecture

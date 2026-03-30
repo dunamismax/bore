@@ -1,0 +1,128 @@
+export interface RelayStatus {
+  service: string;
+  status: string;
+  uptimeSeconds: number;
+  rooms: {
+    total: number;
+    waiting: number;
+    active: number;
+  };
+  limits: {
+    maxRooms: number;
+    roomTTLSeconds: number;
+    reapIntervalSeconds: number;
+    maxMessageSizeBytes: number;
+  };
+  transport: {
+    signalExchanges: number;
+    signalingStarted: number;
+    roomsRelayed: number;
+    bytesRelayed: number;
+    framesRelayed: number;
+  };
+}
+
+function expectRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function expectString(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+  return value;
+}
+
+function expectNumber(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${label} must be a finite number`);
+  }
+  return value;
+}
+
+export function parseRelayStatus(value: unknown): RelayStatus {
+  const root = expectRecord(value, "relay status");
+  const rooms = expectRecord(root.rooms, "relay status.rooms");
+  const limits = expectRecord(root.limits, "relay status.limits");
+  const transport = expectRecord(root.transport, "relay status.transport");
+
+  return {
+    service: expectString(root.service, "relay status.service"),
+    status: expectString(root.status, "relay status.status"),
+    uptimeSeconds: expectNumber(
+      root.uptimeSeconds,
+      "relay status.uptimeSeconds",
+    ),
+    rooms: {
+      total: expectNumber(rooms.total, "relay status.rooms.total"),
+      waiting: expectNumber(rooms.waiting, "relay status.rooms.waiting"),
+      active: expectNumber(rooms.active, "relay status.rooms.active"),
+    },
+    limits: {
+      maxRooms: expectNumber(limits.maxRooms, "relay status.limits.maxRooms"),
+      roomTTLSeconds: expectNumber(
+        limits.roomTTLSeconds,
+        "relay status.limits.roomTTLSeconds",
+      ),
+      reapIntervalSeconds: expectNumber(
+        limits.reapIntervalSeconds,
+        "relay status.limits.reapIntervalSeconds",
+      ),
+      maxMessageSizeBytes: expectNumber(
+        limits.maxMessageSizeBytes,
+        "relay status.limits.maxMessageSizeBytes",
+      ),
+    },
+    transport: {
+      signalExchanges: expectNumber(
+        transport.signalExchanges,
+        "relay status.transport.signalExchanges",
+      ),
+      signalingStarted: expectNumber(
+        transport.signalingStarted,
+        "relay status.transport.signalingStarted",
+      ),
+      roomsRelayed: expectNumber(
+        transport.roomsRelayed,
+        "relay status.transport.roomsRelayed",
+      ),
+      bytesRelayed: expectNumber(
+        transport.bytesRelayed,
+        "relay status.transport.bytesRelayed",
+      ),
+      framesRelayed: expectNumber(
+        transport.framesRelayed,
+        "relay status.transport.framesRelayed",
+      ),
+    },
+  };
+}
+
+export async function fetchRelayStatus(
+  relayURL: string,
+  timeoutMs: number,
+): Promise<RelayStatus> {
+  const relayBaseURL = relayURL.replace(/\/$/, "");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(`${relayBaseURL}/status`, {
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`GET /status returned ${response.status}`);
+    }
+
+    return parseRelayStatus(await response.json());
+  } finally {
+    clearTimeout(timeout);
+  }
+}
