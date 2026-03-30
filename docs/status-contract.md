@@ -7,8 +7,7 @@ Phase 0 inventory for the frontend migration found two live consumers of this pa
 - the legacy Python browser surface at `frontend/src/app/templates/partials/relay_status.html`
 - `cmd/bore-admin`
 
-Phase 1 kept the same contract for the new browser surface at `web/src/components/RelayStatusPanel.vue`.
-Phase 2 adds the OpenTUI operator surface in `tui/` as another consumer of the same Go-owned payload.
+That legacy Python frontend has since been removed. Phase 1 kept the same contract for the new browser surface at `web/src/components/RelayStatusPanel.vue`. Phase 2 added the OpenTUI operator surface in `tui/` as another consumer of the same Go-owned payload.
 
 ## Contract shape
 
@@ -40,7 +39,7 @@ Phase 2 adds the OpenTUI operator surface in `tui/` as another consumer of the s
 
 ## Field inventory
 
-| Field | Used by current Python frontend | Used by `bore-admin` | Used by Astro `/ops/relay` | Used by `tui/` |
+| Field | Used by removed Python frontend | Used by `bore-admin` | Used by Astro `/ops/relay` | Used by `tui/` |
 | --- | --- | --- | --- | --- |
 | `service` | yes | yes | yes | yes |
 | `status` | yes | yes | yes | yes |

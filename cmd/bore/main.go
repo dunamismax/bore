@@ -371,9 +371,9 @@ var components = []component{
 		"Astro + Vue homepage and read-only relay operator surface, served same-origin by the relay",
 	},
 	{
-		"frontend",
-		"legacy reference",
-		"Previous Python FastAPI + Jinja2 + htmx browser surface retained during migration",
+		"tui",
+		"active",
+		"OpenTUI relay operator console: live status, room gauges, and failure-aware relay observability",
 	},
 	{
 		"punchthrough",
@@ -382,7 +382,7 @@ var components = []component{
 	},
 	{
 		"bore-admin",
-		"active",
-		"Go operator CLI: relay status polling over the relay /status endpoint",
+		"compatibility shim",
+		"Go operator CLI: terse relay status polling over the relay /status endpoint",
 	},
 }

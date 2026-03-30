@@ -15,10 +15,10 @@ const components = [
       "Coordinates direct-connection setup, relays encrypted frames when direct fails, and exposes operator endpoints.",
   },
   {
-    label: "cmd/bore-admin",
-    title: "CLI operator summary",
+    label: "tui/",
+    title: "Terminal operator console",
     description:
-      "Polls /status over HTTP for a terse terminal-side view of relay uptime, room counts, and transport activity.",
+      "OpenTUI dashboard for live relay status, room gauges, transport mix, and clearer stale or failure states.",
   },
   {
     label: "cmd/punchthrough + internal/punchthrough/",
@@ -102,8 +102,8 @@ const components = [
         grow into a hidden control plane.
       </p>
       <p>
-        Live operator data comes from the relay's Go-owned <code>/status</code> contract.
-        The same payload also powers <code>bore-admin status</code>.
+        Live operator data comes from the relay's Go-owned <code>/status</code> contract,
+        shared with the terminal operator console in <code>tui/</code>.
       </p>
     </article>
   </section>
@@ -142,8 +142,8 @@ const components = [
     <h2>Need the live relay picture?</h2>
     <p>
       The relay operator page shows uptime, room counts, transport stats, and configured
-      limits from the same <code>/status</code> endpoint that powers
-      <code>bore-admin status</code>.
+      limits from the same <code>/status</code> endpoint that powers the terminal
+      operator console in <code>tui/</code>.
     </p>
     <a class="button button--solid" href="/ops/relay">Open relay status page</a>
   </section>

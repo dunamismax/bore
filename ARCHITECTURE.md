@@ -48,7 +48,7 @@ bore is a **P2P-first, relay-fallback** encrypted file transfer tool. The defaul
 3. **Web frontend (`web/`)** provides the product-facing homepage and a read-only relay ops page, built with Astro + Vue on Bun and consumed as static assets by the Go relay.
 4. **Operator TUI (`tui/`)** is the primary terminal operator surface, built with OpenTUI on Bun and fed by the relay's Go-owned `/status` contract.
 5. **Punchthrough (`cmd/punchthrough` + `internal/punchthrough/`)** contains STUN and UDP hole-punching primitives, integrated into the client's default transport path.
-6. **bore-admin (`cmd/bore-admin`)** remains a compatibility CLI that queries relay status while the OpenTUI operator lane settles.
+6. **bore-admin (`cmd/bore-admin`)** remains a compatibility CLI for terse relay status checks alongside the OpenTUI operator console.
 
 ---
 
@@ -95,11 +95,6 @@ tui/
 │   └── main.ts              # OpenTUI entry point and dashboard wiring
 ├── tests/                   # Bun test coverage for view-model and formatting
 └── package.json             # Bun-managed OpenTUI operator console
-
-frontend/
-├── src/                     # legacy Python frontend retained during migration
-├── tests/
-└── pyproject.toml
 ```
 
 ---
@@ -384,7 +379,6 @@ The active browser surface lives in `web/` and is built with Astro + Vue on Bun.
 - Vue owns the small live-refresh island on `/ops/relay`
 - the browser fetch path is same-origin to the relay and starts with the Go-owned `/status` contract
 - `cmd/relay` serves the built static output from `web/dist`; if the build artifact is missing it serves an explicit fallback page instead of pretending the browser surface exists
-- `frontend/` remains in the repo only as a legacy reference during the migration
 
 The `/status` contract inventory and field-name freeze live in [docs/status-contract.md](docs/status-contract.md).
 

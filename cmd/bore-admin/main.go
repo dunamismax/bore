@@ -131,7 +131,7 @@ func formatDurationSeconds(seconds int64) string {
 func printHelp() {
 	fmt.Println("bore-admin -- compatibility relay operator CLI")
 	fmt.Println()
-	fmt.Println("This remains for terminal compatibility while the OpenTUI operator lane in tui/ settles.")
+	fmt.Println("This remains for terse terminal checks alongside the primary OpenTUI operator surface in tui/.")
 	fmt.Println("For live refresh, room gauges, and clearer failure handling, use: cd tui && bun run start")
 	fmt.Println()
 	fmt.Println("Usage:")

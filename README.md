@@ -24,7 +24,6 @@ The primary terminal operator surface now lives in `tui/` as an OpenTUI console 
 - shared Go packages live under `internal/`: `client`, `relay`, and `punchthrough`
 - the active browser surface lives in `web/` (Astro + Vue on Bun), served same-origin by `cmd/relay`
 - the active terminal operator surface lives in `tui/` (OpenTUI on Bun), pointed at the relay's Go-owned `/status` endpoint
-- `frontend/` remains in the repo only as a legacy reference during the migration
 - **direct P2P is the default transfer path** -- STUN discovery, signaling, hole-punching
 - **QUIC-based direct transport** with production-quality congestion control (default)
 - ICE-like multi-candidate gathering (host, server-reflexive candidates)
@@ -66,9 +65,8 @@ The primary terminal operator surface now lives in `tui/` as an OpenTUI console 
 | `relay` | `cmd/relay`, `internal/relay/` | active | Signaling server for P2P connections, fallback transport, room broker |
 | `web` | `web/` | active | Astro + Vue homepage and read-only relay operator surface |
 | `tui` | `tui/` | active | OpenTUI relay operator console for live status, room gauges, and transport mix |
-| `frontend` | `frontend/` | legacy reference | Previous FastAPI + Jinja2 + htmx browser surface retained during migration |
 | `punchthrough` | `cmd/punchthrough`, `internal/punchthrough/` | active, integrated | NAT probing, STUN discovery, UDP hole-punching -> QUIC transport |
-| `bore-admin` | `cmd/bore-admin` | compatibility shim | Minimal relay status CLI kept while the OpenTUI lane settles |
+| `bore-admin` | `cmd/bore-admin` | compatibility shim | Minimal relay status CLI kept for terse checks alongside the OpenTUI console |
 
 ## Data layer stance
 
@@ -285,7 +283,6 @@ go build ./cmd/bore-admin
 │   │   └── lib/
 │   ├── tests/
 │   └── package.json
-├── frontend/                # legacy reference during migration
 ├── docs/
 ├── ARCHITECTURE.md
 ├── CHANGELOG.md
