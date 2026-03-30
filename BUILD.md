@@ -1,39 +1,40 @@
 # BUILD.md
 
-This file is the execution plan for bore's frontend migration.
+This file tracks bore's frontend migration status and remaining work.
 
-`README.md` and `ARCHITECTURE.md` remain the source of current implementation truth until each phase here lands.
+`README.md`, `ARCHITECTURE.md`, and `docs/status-contract.md` are the current implementation truth. The checkboxes below reflect what is true in the repo today.
 
 ## Decision
 
 **Target shape: TUI-primary plus web companion.**
 
 - Keep **Go** as the only backend and runtime owner.
-- Replace the Python web frontend with **TypeScript + Bun + Astro + Vue**.
+- Replace the shipped Python web frontend with **TypeScript + Bun + Astro + Vue**.
 - Add an **OpenTUI + TypeScript + Bun** operator console.
-- Keep `bore send` and `bore receive` as plain Go CLI commands unless a future phase proves a TUI wrapper is materially better.
+- Keep `bore send` and `bore receive` as plain Go CLI commands unless a later phase proves a TUI wrapper is materially better.
 
 ### Why this is the right shape
 
 - bore is already terminal-first. The product core is `cmd/bore`, not the browser.
 - `bore-admin` proves there is real operator value in a terminal surface.
-- The browser surface matters, but today it is a companion: homepage plus read-only relay status.
-- A browser-only migration would miss the repo's existing terminal/operator reality.
+- The browser surface matters, but it is still a companion: homepage plus read-only relay status.
+- A browser-only migration would miss the repo's existing terminal and operator reality.
 - A TUI makes sense for live relay monitoring and operator workflows. It does not make sense to force a TUI onto every file-transfer command on day one.
 
 ## Current state
 
 - One root **Go module** owns transport, crypto, relay, NAT traversal, packaging, and CLIs.
-- `frontend/` is a separate **Python + FastAPI + Jinja2 + htmx** process.
-- The browser surface is intentionally thin:
-  - `/` is a product homepage
-  - `/ops/relay` is a read-only relay status page
-- `bore-admin` is a minimal Go CLI that polls relay `/status`.
+- `web/` is the shipped **TypeScript + Bun + Astro + Vue** browser surface.
+- `cmd/relay` serves the built `web/dist` output same-origin at `/` and `/ops/relay`, with an explicit fallback page when web assets are missing.
+- `frontend/` still exists as a **Python + FastAPI + Jinja2 + htmx** legacy reference, but it is no longer the shipped browser surface.
+- `bore-admin` is still the only terminal operator surface today.
 - The relay already exposes the operator data frontends need: `/status`, `/healthz`, `/metrics`.
+- The `/status` contract is documented in `docs/status-contract.md` and covered by Go tests.
 - There is **no durable service database** today:
   - relay state is in memory
   - receiver resume state is local JSON on disk
-- The relay root handler is a placeholder because the real browser surface lives in the separate Python process.
+- There is **no `tui/` app yet**.
+- CI still validates the legacy Python frontend and does **not** yet validate `web/` or a future `tui/`.
 
 ## Target state
 
@@ -48,10 +49,10 @@ This file is the execution plan for bore's frontend migration.
 
 ### Web frontend
 
-- Add a **Bun + Astro + Vue** app at **`web/`**.
+- The browser surface lives at **`web/`**.
 - Astro owns routes, page shells, static content, and delivery.
 - Vue owns the live relay-status island and any future interactive operator widgets.
-- Keep the web surface aligned with current product truth:
+- The web surface stays aligned with current product truth:
   - homepage at `/`
   - read-only relay operator page at `/ops/relay`
 - Prefer **static Astro output** plus a boring same-origin serving story from Go.
@@ -61,7 +62,7 @@ This file is the execution plan for bore's frontend migration.
 
 - Add an **OpenTUI + Bun** app at **`tui/`**.
 - The first job of the TUI is **operator observability**, not replacing the core file-transfer CLI.
-- The TUI is the intended successor to `bore-admin`, not to `bore send` and `bore receive` in phase 1.
+- The TUI is the intended successor to `bore-admin`, not to `bore send` and `bore receive` in the first TUI phase.
 
 ## Recommended repo shape after migration
 
@@ -77,7 +78,7 @@ This file is the execution plan for bore's frontend migration.
 └── BUILD.md
 ```
 
-Delete `frontend/` after the Astro web cutover is complete.
+Delete `frontend/` during the cleanup phase once the legacy reference and its Python tooling are intentionally removed.
 
 ## Backend notes
 
@@ -88,7 +89,7 @@ Delete `frontend/` after the Astro web cutover is complete.
   - `/metrics`
 - If the frontends need richer data, extend the Go endpoints deliberately.
 - Do not move product logic into Bun apps.
-- Lock JSON payload shape with tests before the UI rewrite starts.
+- Keep JSON payload shape locked with tests as the UI layers evolve.
 
 ## Data and runtime constraints
 
@@ -104,99 +105,88 @@ Delete `frontend/` after the Astro web cutover is complete.
   - payload-blind relay
   - no hidden control plane
 
+## Status legend
+
+- `[x]` means the repo already matches that step today.
+- `[ ]` means the step is still open.
+- When a box is unchecked, nested notes call out any partial progress that already landed.
+
 ## Phase plan
 
-### Phase 0 - Freeze the frontend contract
+- [x] **Phase 0 - Freeze the frontend contract**
+  - Goal: make the migration boring.
+  - [x] Choose `web/` as the shipped web root and `tui/` as the planned terminal root.
+    - `web/` is live today. `tui/` is still a planned path, not an implemented directory.
+  - [x] Inventory every `/status` field used by the legacy Python frontend and `bore-admin`.
+    - `docs/status-contract.md` records the field inventory and consumer matrix.
+  - [x] Document the Go-owned frontend contract in repo docs or tests.
+    - Current sources: `docs/status-contract.md`, `internal/relay/status/status.go`, and `TestRelay_StatusJSONContractShape`.
+  - [x] Add or tighten tests around relay status payload stability before the first UI rewrite.
+  - [x] Decide exactly how Astro output will be served in production.
+    - Current shipped path: `cmd/relay` serves built `web/dist` same-origin and falls back to an explicit build-missing page when needed.
+  - [x] Exit criterion: future agents can point at one documented frontend contract.
+  - [x] Exit criterion: frontend directory layout is fixed for the migration path.
+  - [x] Exit criterion: the serving story for Astro output is explicit.
 
-Goal: make the migration boring.
+- [x] **Phase 1 - Migrate the web surface to Astro + Vue**
+  - Goal: remove the Python web stack from the shipped browser path without changing product truth.
+  - [x] Recreate `/` in Astro.
+  - [x] Recreate `/ops/relay` in Astro with a small Vue island for live status refresh.
+  - [x] Keep the web surface read-only.
+  - [x] Keep current routing and product messaging aligned with repo docs.
+  - [x] Remove htmx, Jinja2, Tailwind CDN coupling, and the Python frontend from the active runtime path.
+    - `frontend/` still exists as a legacy reference and CI still tests it. That cleanup belongs to Phase 3.
+  - [x] Exit criterion: `/` and `/ops/relay` run on Astro + Vue with parity or better clarity.
+  - [x] Exit criterion: the web frontend reads relay data cleanly from the Go backend.
+  - [x] Exit criterion: the shipped browser surface no longer depends on Python.
 
-Work:
-- choose `web/` and `tui/` as the permanent frontend roots
-- inventory every `/status` field used by the current Python frontend and `bore-admin`
-- document the Go-owned frontend contract in repo docs or tests
-- add or tighten tests around relay status payload stability before the first UI rewrite
-- decide exactly how Astro output will be served in production
+- [ ] **Phase 2 - Add the OpenTUI operator console**
+  - Goal: give bore a real terminal operator surface instead of a thin polling CLI.
+  - [ ] Build an OpenTUI app focused on relay observability first.
+  - [ ] Cover current `bore-admin status` scope plus live refresh, room gauges, direct vs relay counts, and clear failure states.
+  - [ ] Keep the boundary boring: HTTP to relay endpoints or a thin local wrapper around them.
+  - [ ] Keep `bore-admin` as a compatibility shim until the TUI proves stable.
+    - Today `bore-admin` is still a standalone minimal CLI because no TUI exists yet.
+  - [ ] Exit criterion: there is a usable TUI for relay operators.
+  - [ ] Exit criterion: `bore-admin` is either a thin wrapper into the TUI or clearly marked for deprecation.
+  - [ ] Exit criterion: the TUI owns presentation, not backend logic.
 
-Exit criteria:
-- future agents can point at one documented frontend contract
-- frontend directory layout is fixed
-- the serving story for Astro output is explicit
+- [ ] **Phase 3 - Consolidate packaging, CI, and docs**
+  - Goal: finish the stack cutover cleanly.
+  - [ ] Remove `frontend/` and its Python tooling once the legacy reference is no longer needed.
+  - [ ] Update CI to check `web/` and `tui/`.
+    - Current CI still runs the `frontend/` Python job and has no `web/` or `tui/` job.
+  - [ ] Update README, ARCHITECTURE, and deployment docs to reflect the final frontend lanes.
+    - README, ARCHITECTURE, Dockerfile, and relay-side web serving already describe the Astro web lane.
+    - This phase is still open because the repo still carries the legacy Python frontend and there is no TUI lane to document yet.
+  - [x] Decide whether relay `/` serves Astro-built assets directly or redirects to a separately hosted web frontend.
+    - Current decision: direct same-origin serving from `cmd/relay`.
+  - [ ] Remove stale commands, paths, and implementation claims in the same change.
+    - Legacy `frontend/` references still remain on purpose.
+  - [x] Exit criterion: no active runtime path depends on the Python frontend.
+  - [ ] Exit criterion: docs describe Go + Astro/Vue + OpenTUI accurately.
+  - [ ] Exit criterion: CI covers the new frontend lanes.
 
-### Phase 1 - Migrate the web surface to Astro + Vue
-
-Goal: remove the Python web stack without changing product truth.
-
-Work:
-- recreate `/` in Astro
-- recreate `/ops/relay` in Astro with a small Vue island for live status refresh
-- keep the web surface read-only
-- keep current routing and product messaging unless a repo-wide docs update is planned in the same change
-- remove htmx, Jinja2, Tailwind CDN coupling, and the Python frontend from the active runtime path
-
-Exit criteria:
-- `/` and `/ops/relay` run on Astro + Vue with parity or better clarity
-- the web frontend reads relay data cleanly from the Go backend
-- the repo no longer depends on Python for the shipped browser surface
-
-### Phase 2 - Add the OpenTUI operator console
-
-Goal: give bore a real terminal operator surface instead of a thin polling CLI.
-
-Work:
-- build an OpenTUI app focused on relay observability first
-- cover current `bore-admin status` scope plus live refresh, room gauges, direct vs relay counts, and clear failure states
-- keep the boundary boring: HTTP to relay endpoints or a thin local wrapper around them
-- keep `bore-admin` as a compatibility shim until the TUI proves stable
-
-Exit criteria:
-- there is a usable TUI for relay operators
-- `bore-admin` is either a thin wrapper into the TUI or clearly marked for deprecation
-- the TUI owns presentation, not backend logic
-
-### Phase 3 - Consolidate packaging, CI, and docs
-
-Goal: finish the stack cutover cleanly.
-
-Work:
-- remove `frontend/` and its Python tooling once the Astro web frontend is live
-- update CI to check `web/` and `tui/`
-- update README, ARCHITECTURE, and deployment docs to reflect the new lanes
-- decide whether relay `/` serves Astro-built assets directly or redirects to a separately hosted web frontend
-- remove stale commands, paths, and implementation claims in the same change
-
-Exit criteria:
-- no active runtime path depends on the Python frontend
-- docs describe Go + Astro/Vue + OpenTUI accurately
-- CI covers the new frontend lanes
-
-### Phase 4 - Optional product-facing TUI expansion
-
-Goal: only do this if it earns itself.
-
-Possible scope:
-- guided receive/send workflows
-- transfer progress dashboards
-- local transfer history or resume inspection
-
-Rules:
-- do not do this by default
-- a plain CLI is still the right tool for many bore flows
-- require an explicit user/operator benefit before broadening the TUI scope
-
-Exit criteria:
-- either there is a concrete expansion plan with real operator value, or this phase is closed out as unnecessary
+- [ ] **Phase 4 - Optional product-facing TUI expansion**
+  - Goal: only do this if it earns itself.
+  - [ ] Decide whether operator usage actually earns product-facing TUI expansion.
+    - Nothing in the repo today shows that this phase has been earned yet.
+  - [ ] If it is earned, scope guided receive and send workflows.
+  - [ ] If it is earned, scope transfer progress dashboards.
+  - [ ] If it is earned, scope local transfer history or resume inspection.
+  - [ ] Exit criterion: either there is a concrete expansion plan with real operator value, or this phase is explicitly closed as unnecessary.
 
 ## Recommended execution order
 
-1. Phase 0
-2. Phase 1
-3. Phase 2
-4. Phase 3
-5. Phase 4 only if operator usage proves the need
+- [x] Phase 0
+- [x] Phase 1
+- [ ] Phase 2
+- [ ] Phase 3
+- [ ] Phase 4 only if operator usage proves the need
 
 ### Why this order
 
-- The Python web frontend is the clearest mismatch with the new stack contract.
+- The Python web frontend was the clearest mismatch with the current stack contract.
 - The web scope is small enough to migrate without touching transport or crypto logic.
 - The TUI is justified, but it should land against a stable Go contract, not during backend churn.
 - This order keeps current product behavior intact while the frontend lanes change.
@@ -208,16 +198,15 @@ Exit criteria:
 - adding a Bun SSR runtime when static output or simple Go-side serving is enough
 - letting frontend claims drift from security docs or transport reality
 - breaking operator parity during the Python-to-Astro cutover
-- spreading the repo across too many app roots without one obvious build/test story
+- spreading the repo across too many app roots without one obvious build and test story
 
-## Acceptance criteria
+## Acceptance criteria for this BUILD
 
-This BUILD is complete when future agents can use it to execute the migration without guessing the repo direction.
+This BUILD is in good shape when future agents can use it to continue the migration without guessing the repo direction.
 
-That means:
-- frontend target is unambiguous: **Go backend + TUI-primary + web companion**
-- the first migration target is unambiguous: **replace the Python web frontend with Astro + Vue**
-- the terminal plan is unambiguous: **add OpenTUI for operator workflows, do not replace the core transfer CLI by default**
-- backend and data constraints are explicit
-- risks and non-goals are explicit
-- phase boundaries and exit criteria are concrete
+- [x] Frontend target is unambiguous: **Go backend + TUI-primary + web companion**.
+- [x] The first migration target is unambiguous: **replace the Python web frontend with Astro + Vue**.
+- [x] The terminal plan is unambiguous: **add OpenTUI for operator workflows, do not replace the core transfer CLI by default**.
+- [x] Backend and data constraints are explicit.
+- [x] Risks and non-goals are explicit.
+- [x] Phase boundaries and exit criteria are concrete.
