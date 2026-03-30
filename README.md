@@ -8,10 +8,10 @@ bore moves a file between two machines with a short human-readable rendezvous co
 
 All file data is end-to-end encrypted with Noise XXpsk0 regardless of transport path. The relay is payload-blind -- it forwards encrypted bytes without any ability to inspect file contents.
 
-The repo also ships a separate operator dashboard process built with Python, FastAPI, Jinja2, and htmx (no JavaScript build step):
+The relay now serves a same-origin browser surface built with Astro + Vue from `web/`:
 
-- `/` is the Bore homepage served by the frontend
-- `/ops/relay` is a live operator page served by the frontend and backed by the relay's `/status` endpoint with htmx auto-refresh
+- `/` is the Bore homepage served by the Go relay from the built web assets
+- `/ops/relay` is a live read-only operator page backed by the relay's Go-owned `/status` endpoint
 
 ## Status
 
@@ -20,7 +20,8 @@ The repo also ships a separate operator dashboard process built with Python, Fas
 - the repo is one Go module rooted at `github.com/dunamismax/bore`
 - binaries live under `cmd/`: `bore`, `relay`, `bore-admin`, and `punchthrough`
 - shared Go packages live under `internal/`: `client`, `relay`, and `punchthrough`
-- the operator dashboard lives in `frontend/` (Python + FastAPI + htmx)
+- the active browser surface lives in `web/` (Astro + Vue on Bun), served same-origin by `cmd/relay`
+- `frontend/` remains in the repo only as a legacy reference during the migration
 - **direct P2P is the default transfer path** -- STUN discovery, signaling, hole-punching
 - **QUIC-based direct transport** with production-quality congestion control (default)
 - ICE-like multi-candidate gathering (host, server-reflexive candidates)
@@ -48,7 +49,7 @@ The repo also ships a separate operator dashboard process built with Python, Fas
 - per-IP rate limiting on relay `/ws` and `/signal` endpoints
 - room ID validation on relay join/signaling paths, with signaling limited to live relay rooms
 - explicit HTTP server timeouts (read, write, idle, header)
-- FastAPI + Jinja2 + htmx operator dashboard at `/` and `/ops/relay` in the separate frontend process
+- Astro + Vue browser surface at `/` and `/ops/relay`, served same-origin by the relay from built static assets
 - `bore-admin status` relay polling
 - deployment packaging (Dockerfile, systemd service unit)
 - standalone `punchthrough` CLI for NAT probing
@@ -59,7 +60,8 @@ The repo also ships a separate operator dashboard process built with Python, Fas
 | --- | --- | --- | --- |
 | `bore` client | `cmd/bore`, `internal/client/` | active | P2P QUIC direct transport, relay fallback, crypto, transfer engine, CLI |
 | `relay` | `cmd/relay`, `internal/relay/` | active | Signaling server for P2P connections, fallback transport, room broker |
-| `frontend` | `frontend/` | active | FastAPI + Jinja2 + htmx operator dashboard |
+| `web` | `web/` | active | Astro + Vue homepage and read-only relay operator surface |
+| `frontend` | `frontend/` | legacy reference | Previous FastAPI + Jinja2 + htmx browser surface retained during migration |
 | `punchthrough` | `cmd/punchthrough`, `internal/punchthrough/` | active, integrated | NAT probing, STUN discovery, UDP hole-punching -> QUIC transport |
 | `bore-admin` | `cmd/bore-admin` | active | Minimal operator CLI for relay health and status polling |
 
@@ -68,7 +70,7 @@ The repo also ships a separate operator dashboard process built with Python, Fas
 Bore's relay path does not need a durable database today.
 
 - `internal/relay/room` keeps live room state in memory only.
-- `frontend/` is a read-only operator dashboard that fetches the relay's live `/status` snapshot.
+- `web/` is a read-only browser surface that consumes the relay's live `/status` snapshot.
 - `bore-admin` is a stateless CLI over that same `/status` endpoint.
 - resumable transfer checkpoint state is persisted as JSON on the receiver's filesystem (not in a database).
 - transfer history and persisted operator history are not implemented yet.
@@ -100,14 +102,21 @@ go build ./cmd/relay
 go build ./cmd/bore
 ```
 
-### 2. Set up the frontend
+### 2. Set up the web frontend
 
 ```bash
-cd frontend
-uv sync
+cd web
+bun install
 ```
 
-### 3. Run a local relay
+### 3. Build the web assets
+
+```bash
+cd web
+bun run build
+```
+
+### 4. Run a local relay
 
 ```bash
 RELAY_ADDR=127.0.0.1:8080 go run ./cmd/relay
@@ -116,20 +125,20 @@ RELAY_ADDR=127.0.0.1:8080 go run ./cmd/relay
 The relay serves as:
 - **Signaling server** -- coordinates P2P candidate exchange between peers
 - **Fallback transport** -- forwards encrypted bytes when direct P2P fails
+- **Same-origin browser surface** -- serves the built Astro output from `web/dist`
 
-### 4. Start the frontend
+With the web build present:
+
+- product page: <http://127.0.0.1:8080/>
+- relay ops page: <http://127.0.0.1:8080/ops/relay>
+- raw status JSON (relay): <http://127.0.0.1:8080/status>
+
+For browser-only frontend iteration outside the shipped runtime path, you can also run:
 
 ```bash
-cd frontend && BORE_RELAY_URL=http://127.0.0.1:8080 uv run uvicorn app.main:app --host 127.0.0.1 --port 3000 --app-dir src
+cd web
+bun run dev
 ```
-
-`BORE_RELAY_URL` must be the bare relay origin (for example `http://127.0.0.1:8080`), not `/status` or another API path.
-
-With both running:
-
-- product page: <http://127.0.0.1:3000/>
-- relay ops page: <http://127.0.0.1:3000/ops/relay>
-- raw status JSON (relay): <http://127.0.0.1:8080/status>
 
 ### 5. Check relay status from the CLI
 
@@ -177,11 +186,11 @@ Transport: transport=direct
 ### Frontend
 
 ```bash
-cd frontend
-uv run ruff check .
-uv run ruff format --check .
-uv run pyright
-uv run pytest
+cd web
+bun install
+bun run lint
+bun run check
+bun test
 ```
 
 ### Client
@@ -221,14 +230,6 @@ go build ./cmd/bore-admin
 │   ├── bore-admin/
 │   ├── punchthrough/
 │   └── relay/
-├── frontend/
-│   ├── src/
-│   │   └── app/
-│   │       ├── routes/
-│   │       ├── templates/
-│   │       └── static/
-│   ├── tests/
-│   └── pyproject.toml
 ├── internal/
 │   ├── client/
 │   │   ├── code/
@@ -246,6 +247,16 @@ go build ./cmd/bore-admin
 │   │   ├── transport/
 │   │   └── webui/
 │   └── roomid/
+├── web/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── layouts/
+│   │   ├── lib/
+│   │   ├── pages/
+│   │   └── styles/
+│   ├── tests/
+│   └── package.json
+├── frontend/                # legacy reference during migration
 ├── docs/
 ├── ARCHITECTURE.md
 ├── CHANGELOG.md
@@ -257,6 +268,7 @@ go build ./cmd/bore-admin
 - `README.md` - current product status, quick start, and verification commands
 - `ARCHITECTURE.md` - system layout, transport layering, and design notes
 - `SECURITY.md` - threat model, implemented guardrails, and current limits
+- `docs/status-contract.md` - Go-owned `/status` contract consumed by the browser surface and `bore-admin`
 - `CHANGELOG.md` - release history
 
 ## Architecture

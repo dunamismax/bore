@@ -1,0 +1,21 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="bore | page not found"
+  description="The requested page was not found."
+>
+  <section class="panel panel--cta">
+    <p class="eyebrow">404</p>
+    <h1>That route is not part of the current browser surface.</h1>
+    <p>
+      bore intentionally keeps the browser side narrow: the product homepage at
+      <code>/</code> and the read-only relay operator page at <code>/ops/relay</code>.
+    </p>
+    <div class="hero__actions">
+      <a class="button button--solid" href="/">Back to home</a>
+      <a class="button button--ghost" href="/ops/relay">Open relay status</a>
+    </div>
+  </section>
+</BaseLayout>

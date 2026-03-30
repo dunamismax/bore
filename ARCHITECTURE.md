@@ -31,21 +31,21 @@ bore is a **P2P-first, relay-fallback** encrypted file transfer tool. The defaul
                 ┌──────────────┐
                 │ Go relay     │
                 │ (signaling + │
-                │  fallback)   │
+                │  fallback +  │
+                │  web serve)  │
                 └──────┬───────┘
                        │
                 ┌──────▼──────┐
-                │ frontend    │
-                │ FastAPI +   │
-                │ htmx        │
+                │ web         │
+                │ Astro + Vue │
                 └─────────────┘
 ```
 
 ### Component roles
 
 1. **Client (`cmd/bore` + `internal/client/`)** generates or parses a rendezvous code, discovers peers via STUN, exchanges candidates through the relay's signaling channel, attempts direct hole-punching, falls back to relay if needed, performs the Noise handshake, and streams encrypted file data.
-2. **Relay (`cmd/relay` + `internal/relay/`)** provides the signaling endpoint for P2P candidate exchange, serves as a fallback transport by forwarding encrypted frames over WebSockets, manages rooms, and serves a minimal landing page plus operator endpoints.
-3. **Frontend (`frontend/`)** provides the product-facing homepage and a read-only relay ops page, built with Python + FastAPI + Jinja2 + htmx (no JavaScript build step).
+2. **Relay (`cmd/relay` + `internal/relay/`)** provides the signaling endpoint for P2P candidate exchange, serves as a fallback transport by forwarding encrypted frames over WebSockets, manages rooms, exposes operator endpoints, and serves the built web frontend same-origin when `web/dist` is present.
+3. **Web frontend (`web/`)** provides the product-facing homepage and a read-only relay ops page, built with Astro + Vue on Bun and consumed as static assets by the Go relay.
 4. **Punchthrough (`cmd/punchthrough` + `internal/punchthrough/`)** contains STUN and UDP hole-punching primitives, integrated into the client's default transport path.
 5. **bore-admin (`cmd/bore-admin`)** is a minimal operator CLI that queries relay status.
 
@@ -75,17 +75,23 @@ internal/
 │   ├── ratelimit/           # per-IP token bucket rate limiting
 │   ├── room/                # room lifecycle and registry
 │   ├── transport/           # WebSocket server + signaling + frame forwarding
-│   └── webui/               # minimal placeholder handler (dashboard served by frontend/)
+│   └── webui/               # same-origin static web asset serving + fallback page
 └── roomid/                  # shared relay room ID validation rules
 
-frontend/
+web/
 ├── src/
-│   └── app/
-│       ├── routes/          # FastAPI route handlers
-│       ├── templates/       # Jinja2 templates with htmx
-│       └── static/          # CSS (Tailwind CDN)
-├── tests/                   # pytest test coverage
-└── pyproject.toml           # uv, ruff, pyright, pytest config
+│   ├── components/          # Vue islands
+│   ├── layouts/             # Astro page shells
+│   ├── lib/                 # status contract helpers and formatters
+│   ├── pages/               # Astro routes
+│   └── styles/              # global CSS
+├── tests/                   # Bun test coverage for contract helpers
+└── package.json             # Bun-managed web frontend
+
+frontend/
+├── src/                     # legacy Python frontend retained during migration
+├── tests/
+└── pyproject.toml
 ```
 
 ---
@@ -248,7 +254,7 @@ WebSocket server / connection handling
 ├── /signal endpoint (P2P signaling -- primary purpose)
 ├── /ws endpoint (fallback transport -- encrypted byte forwarding)
 ├── /healthz, /status, /metrics (operator endpoints)
-└── / (minimal relay landing page)
+└── /, /ops/relay (same-origin web surface when assets are built)
   ↓
 room registry + room lifecycle
 ```
@@ -267,7 +273,7 @@ Owns:
 - per-IP rate limiting on `/ws` and `/signal` endpoints
 - explicit HTTP server timeouts
 - restrictive browser headers on HTTP responses
-- minimal landing page serving at `/`
+- same-origin static web serving at `/` and `/ops/relay` when built assets are present
 
 Design constraints:
 
@@ -280,7 +286,7 @@ Design constraints:
 - `internal/relay/room` -- room creation, lookup, pairing, lifecycle, TTL
 - `internal/relay/ratelimit` -- per-IP token bucket rate limiting
 - `internal/relay/metrics` -- atomic operator-facing counters
-- `internal/relay/webui` -- minimal placeholder handler (dashboard served by frontend/)
+- `internal/relay/webui` -- same-origin web asset serving and fallback page when the web build is missing
 
 ---
 
@@ -362,23 +368,25 @@ Both flows use identical encryption. The relay forwards encrypted bytes without 
 
 ---
 
-## Frontend Architecture (`frontend/`)
+## Frontend Architecture (`web/`)
 
-The frontend is a separate Python process (FastAPI + Jinja2 + htmx) that fetches data from the Go relay's API and renders server-side HTML with live updates.
+The active browser surface lives in `web/` and is built with Astro + Vue on Bun.
 
-- `frontend/src/app/routes` -- FastAPI route handlers for homepage, relay ops, 404
-- `frontend/src/app/templates` -- Jinja2 templates with htmx for live-updating relay status
-- `frontend/src/app/static` -- minimal local static assets; htmx and Tailwind load from pinned CDNs (no JavaScript build step)
-- `frontend/tests` -- pytest test coverage
+- Astro owns the page shell for `/`, `/ops/relay`, and the static 404 page
+- Vue owns the small live-refresh island on `/ops/relay`
+- the browser fetch path is same-origin to the relay and starts with the Go-owned `/status` contract
+- `cmd/relay` serves the built static output from `web/dist`; if the build artifact is missing it serves an explicit fallback page instead of pretending the browser surface exists
+- `frontend/` remains in the repo only as a legacy reference during the migration
+
+The `/status` contract inventory and field-name freeze live in [docs/status-contract.md](docs/status-contract.md).
 
 Design constraints:
 
 - keep the web surface read-only
 - fetch relay data from the Go relay's `/status`, `/healthz`, `/metrics` endpoints
-- require `BORE_RELAY_URL` to be a bare relay origin so frontend endpoint composition stays unambiguous
 - keep the browser story aligned with the actual P2P-first product truth
 - emit restrictive browser headers that match the read-only surface
-- no JavaScript build step
+- keep the serving story same-origin and boring
 
 ---
 

@@ -331,7 +331,7 @@ var implementedItems = []string{
 	"relay-coordinated signaling for peer candidate exchange",
 	"observable transport decisions (method + fallback reason)",
 	"connection quality metrics tracking (throughput, byte counters)",
-	"FastAPI + htmx operator dashboard",
+	"Astro + Vue read-only operator surface served by the relay",
 	"bore send / bore receive CLI commands",
 }
 
@@ -366,9 +366,14 @@ var components = []component{
 		"Go relay server: signaling for P2P connections, fallback transport, room registry",
 	},
 	{
-		"frontend",
+		"web",
 		"active",
-		"Python FastAPI + Jinja2 + htmx operator dashboard and product homepage",
+		"Astro + Vue homepage and read-only relay operator surface, served same-origin by the relay",
+	},
+	{
+		"frontend",
+		"legacy reference",
+		"Previous Python FastAPI + Jinja2 + htmx browser surface retained during migration",
 	},
 	{
 		"punchthrough",

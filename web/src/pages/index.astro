@@ -1,0 +1,150 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+
+const components = [
+  {
+    label: "cmd/bore + internal/client/",
+    title: "P2P transfer engine",
+    description:
+      "Rendezvous, STUN discovery, candidate signaling, direct transport, relay fallback, crypto, and file integrity.",
+  },
+  {
+    label: "cmd/relay + internal/relay/",
+    title: "Signaling server + fallback transport",
+    description:
+      "Coordinates direct-connection setup, relays encrypted frames when direct fails, and exposes operator endpoints.",
+  },
+  {
+    label: "cmd/bore-admin",
+    title: "CLI operator summary",
+    description:
+      "Polls /status over HTTP for a terse terminal-side view of relay uptime, room counts, and transport activity.",
+  },
+  {
+    label: "cmd/punchthrough + internal/punchthrough/",
+    title: "NAT traversal engine",
+    description:
+      "STUN probing, NAT classification, and UDP hole-punching integrated into the default transfer path.",
+  },
+];
+---
+
+<BaseLayout
+  title="bore | peer-to-peer encrypted transfer"
+  description="Direct file transfer with a short rendezvous code, end-to-end encryption, and relay fallback when direct peer-to-peer fails."
+>
+  <section class="hero panel panel--hero">
+    <div class="hero__copy">
+      <p class="eyebrow">Peer-to-peer. Encrypted. Self-hostable.</p>
+      <h1>Direct file transfer with no one in the middle.</h1>
+      <p class="lede">
+        bore moves a file between two machines with a short rendezvous code and a
+        Noise handshake. The default path is direct peer-to-peer via STUN discovery,
+        candidate exchange, and UDP hole-punching. When direct fails, the relay
+        forwards encrypted bytes as a transparent fallback without seeing plaintext.
+      </p>
+      <div class="hero__actions">
+        <a class="button button--solid" href="/ops/relay">Open relay operator surface</a>
+        <a class="button button--ghost" href="#current-shape">See current shape</a>
+      </div>
+      <ul class="facts-list">
+        <li>No accounts, no cloud mailbox, no payload inspection.</li>
+        <li>Default transport is direct P2P. Relay is the automatic fallback.</li>
+        <li>The browser surface stays read-only and same-origin to the Go relay.</li>
+      </ul>
+    </div>
+    <div class="hero__panel">
+      <p class="eyebrow">Rendezvous code example</p>
+      <code class="code-sample">Ahcj7nQZclo-j15A_xGS8w-868-outer-crane-crane</code>
+      <dl class="spec-grid">
+        <div>
+          <dt>Handshake</dt>
+          <dd>Noise XXpsk0</dd>
+        </div>
+        <div>
+          <dt>Channel</dt>
+          <dd>ChaCha20-Poly1305</dd>
+        </div>
+        <div>
+          <dt>Integrity</dt>
+          <dd>SHA-256</dd>
+        </div>
+        <div>
+          <dt>Default path</dt>
+          <dd>direct P2P</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="two-up" id="current-shape">
+    <article class="panel">
+      <p class="eyebrow">Current shipped path</p>
+      <h2>P2P first, relay fallback, claims kept tight.</h2>
+      <p>
+        The client in <code>cmd/bore</code> discovers each peer's public address via
+        STUN, exchanges candidates through the relay signaling channel, and attempts a
+        direct UDP connection via hole-punching. If direct fails, the transfer falls
+        back to the relay automatically.
+      </p>
+      <p>
+        The relay in <code>cmd/relay</code> serves two narrow roles: signaling server
+        for peer connection setup, and fallback transport for encrypted byte
+        forwarding. It never sees plaintext regardless of which path is used.
+      </p>
+    </article>
+    <article class="panel">
+      <p class="eyebrow">What the browser surface is for</p>
+      <h2>A product face plus a practical operator page.</h2>
+      <p>
+        bore serves the homepage at <code>/</code> and a read-only relay status page at
+        <code>/ops/relay</code>. The browser view stays deliberately thin so it does not
+        grow into a hidden control plane.
+      </p>
+      <p>
+        Live operator data comes from the relay's Go-owned <code>/status</code> contract.
+        The same payload also powers <code>bore-admin status</code>.
+      </p>
+    </article>
+  </section>
+
+  <section class="panel">
+    <p class="eyebrow">Transfer lane</p>
+    <h2>How the secure path works today.</h2>
+    <ol class="step-list">
+      <li>Sender creates a relay room and receives a full rendezvous code.</li>
+      <li>Each peer discovers its public address via STUN and exchanges candidates through the relay.</li>
+      <li>Peers attempt a direct UDP connection via hole-punching.</li>
+      <li>Both peers mix the rendezvous code into a Noise XXpsk0 handshake over the established connection.</li>
+      <li>Encrypted file frames flow directly between peers, or via relay if direct failed.</li>
+      <li>Receiver verifies the final SHA-256 digest before accepting the file.</li>
+    </ol>
+    <p class="panel__footnote">
+      If the direct connection fails at any step, the transfer falls back to the relay
+      automatically. Use <code>--relay-only</code> to skip the direct attempt.
+    </p>
+  </section>
+
+  <section class="component-grid">
+    {
+      components.map((component) => (
+        <article class="panel panel--compact">
+          <p class="eyebrow">{component.label}</p>
+          <h3>{component.title}</h3>
+          <p>{component.description}</p>
+        </article>
+      ))
+    }
+  </section>
+
+  <section class="panel panel--cta">
+    <p class="eyebrow">Operator surface</p>
+    <h2>Need the live relay picture?</h2>
+    <p>
+      The relay operator page shows uptime, room counts, transport stats, and configured
+      limits from the same <code>/status</code> endpoint that powers
+      <code>bore-admin status</code>.
+    </p>
+    <a class="button button--solid" href="/ops/relay">Open relay status page</a>
+  </section>
+</BaseLayout>

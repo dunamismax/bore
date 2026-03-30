@@ -19,8 +19,8 @@ Implemented today:
 - room expiry and bounded in-memory room tracking in the relay
 - relay `/healthz`, `/status`, and `/metrics` endpoints
 - resumable single-file transfers with on-disk checkpoint state
-- a separate FastAPI browser surface at `/` and `/ops/relay`, pointed at the relay with `BORE_RELAY_URL`
-- restrictive browser headers on relay and frontend responses (CSP, `nosniff`, frame deny, `no-referrer`)
+- a same-origin Astro + Vue browser surface at `/` and `/ops/relay`, served by the relay from built static assets
+- restrictive browser headers on relay responses and served web assets (CSP, `nosniff`, frame deny, `no-referrer`)
 
 Important limits on those claims:
 
@@ -91,7 +91,7 @@ These controls provide meaningful abuse resistance for the relay's threat profil
 
 ### Operator endpoints and browser surface
 
-The relay exposes `/healthz`, `/status`, and `/metrics` for operator visibility and a minimal root page at `/`. The product homepage and `/ops/relay` operator view are served by the separate FastAPI frontend, which reads relay data over HTTP using a validated `BORE_RELAY_URL` origin.
+The relay exposes `/healthz`, `/status`, and `/metrics` for operator visibility and also serves the product homepage plus `/ops/relay` same-origin when the built web assets are present. The browser surface reads relay data from the Go-owned `/status` contract without adding writes, auth, or a separate runtime.
 Those surfaces are intended to reveal only aggregate service state such as:
 
 - process health

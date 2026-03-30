@@ -1,0 +1,43 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+const currentPath = Astro.url.pathname;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="site-header">
+        <a class="brand" href="/">
+          <span class="brand__mark">bore</span>
+          <span class="brand__tag">peer-to-peer encrypted transfer</span>
+        </a>
+        <nav class="site-nav" aria-label="Primary">
+          <a class={currentPath === "/" ? "is-active" : undefined} href="/">Home</a>
+          <a class={currentPath.startsWith("/ops/relay") ? "is-active" : undefined} href="/ops/relay">
+            Relay Ops
+          </a>
+        </nav>
+      </header>
+      <main class="page-shell">
+        <slot />
+      </main>
+      <footer class="site-footer">
+        <p>bore keeps the browser surface read-only. Go owns transport, relay state, and the relay APIs.</p>
+      </footer>
+    </div>
+  </body>
+</html>

@@ -9,33 +9,11 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	relaystatus "github.com/dunamismax/bore/internal/relay/status"
 )
 
 const defaultRelayURL = "http://localhost:8080"
-
-type relayStatus struct {
-	Service       string `json:"service"`
-	Status        string `json:"status"`
-	UptimeSeconds int64  `json:"uptimeSeconds"`
-	Rooms         struct {
-		Total   int `json:"total"`
-		Waiting int `json:"waiting"`
-		Active  int `json:"active"`
-	} `json:"rooms"`
-	Limits struct {
-		MaxRooms            int   `json:"maxRooms"`
-		RoomTTLSeconds      int64 `json:"roomTTLSeconds"`
-		ReapIntervalSeconds int64 `json:"reapIntervalSeconds"`
-		MaxMessageSizeBytes int64 `json:"maxMessageSizeBytes"`
-	} `json:"limits"`
-	Transport struct {
-		SignalExchanges  int64 `json:"signalExchanges"`
-		SignalingStarted int64 `json:"signalingStarted"`
-		RoomsRelayed     int64 `json:"roomsRelayed"`
-		BytesRelayed     int64 `json:"bytesRelayed"`
-		FramesRelayed    int64 `json:"framesRelayed"`
-	} `json:"transport"`
-}
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -82,7 +60,7 @@ func runStatus(args []string) error {
 	return nil
 }
 
-func fetchStatus(relayURL string, timeout time.Duration) (*relayStatus, error) {
+func fetchStatus(relayURL string, timeout time.Duration) (*relaystatus.Response, error) {
 	endpoint := strings.TrimRight(relayURL, "/") + "/status"
 
 	client := &http.Client{Timeout: timeout}
@@ -96,7 +74,7 @@ func fetchStatus(relayURL string, timeout time.Duration) (*relayStatus, error) {
 		return nil, fmt.Errorf("fetch %s: unexpected status %s", endpoint, resp.Status)
 	}
 
-	var status relayStatus
+	var status relaystatus.Response
 	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
 		return nil, fmt.Errorf("decode %s: %w", endpoint, err)
 	}
@@ -107,7 +85,7 @@ func fetchStatus(relayURL string, timeout time.Duration) (*relayStatus, error) {
 	return &status, nil
 }
 
-func printStatus(relayURL string, status *relayStatus) {
+func printStatus(relayURL string, status *relaystatus.Response) {
 	fmt.Println("bore-admin")
 	fmt.Println("==========")
 	fmt.Println()

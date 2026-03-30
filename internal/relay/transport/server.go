@@ -1,7 +1,8 @@
 // Package transport implements the WebSocket relay transport layer.
 //
-// The server exposes a /ws endpoint for peer connections plus lightweight
-// /healthz, /status, and /metrics endpoints for operator visibility.
+// The server exposes a /ws endpoint for peer connections, lightweight
+// /healthz, /status, and /metrics endpoints for operator visibility, and a
+// same-origin browser surface when built web assets are present.
 // Senders connect without a room query parameter to create a new room;
 // the server replies with the room ID as the first text message. Receivers
 // connect with ?room=ROOM_ID to join an existing room. Once both peers are
@@ -21,6 +22,7 @@ import (
 	"github.com/dunamismax/bore/internal/relay/metrics"
 	"github.com/dunamismax/bore/internal/relay/ratelimit"
 	"github.com/dunamismax/bore/internal/relay/room"
+	relaystatus "github.com/dunamismax/bore/internal/relay/status"
 	"github.com/dunamismax/bore/internal/relay/webui"
 	"github.com/dunamismax/bore/internal/roomid"
 	"nhooyr.io/websocket"
@@ -215,41 +217,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpSrv.Shutdown(ctx)
 }
 
-type healthResponse struct {
-	Service string `json:"service"`
-	Status  string `json:"status"`
-}
-
-type statusResponse struct {
-	Service       string          `json:"service"`
-	Status        string          `json:"status"`
-	UptimeSeconds int64           `json:"uptimeSeconds"`
-	Rooms         statusRooms     `json:"rooms"`
-	Limits        statusLimits    `json:"limits"`
-	Transport     statusTransport `json:"transport"`
-}
-
-type statusRooms struct {
-	Total   int `json:"total"`
-	Waiting int `json:"waiting"`
-	Active  int `json:"active"`
-}
-
-type statusTransport struct {
-	SignalExchanges  int64 `json:"signalExchanges"`
-	SignalingStarted int64 `json:"signalingStarted"`
-	RoomsRelayed     int64 `json:"roomsRelayed"`
-	BytesRelayed     int64 `json:"bytesRelayed"`
-	FramesRelayed    int64 `json:"framesRelayed"`
-}
-
-type statusLimits struct {
-	MaxRooms            int   `json:"maxRooms"`
-	RoomTTLSeconds      int64 `json:"roomTTLSeconds"`
-	ReapIntervalSeconds int64 `json:"reapIntervalSeconds"`
-	MaxMessageSizeBytes int64 `json:"maxMessageSizeBytes"`
-}
-
 func securityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -262,9 +229,9 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, healthResponse{
-		Service: "bore-relay",
-		Status:  "ok",
+	writeJSON(w, http.StatusOK, relaystatus.HealthResponse{
+		Service: relaystatus.ServiceName,
+		Status:  relaystatus.SteadyState,
 	})
 }
 
@@ -272,22 +239,22 @@ func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	snapshot := s.registry.Snapshot()
 	msnap := s.counters.Snapshot()
 
-	writeJSON(w, http.StatusOK, statusResponse{
-		Service:       "bore-relay",
-		Status:        "ok",
+	writeJSON(w, http.StatusOK, relaystatus.Response{
+		Service:       relaystatus.ServiceName,
+		Status:        relaystatus.SteadyState,
 		UptimeSeconds: int64(time.Since(s.started).Seconds()),
-		Rooms: statusRooms{
+		Rooms: relaystatus.Rooms{
 			Total:   snapshot.TotalRooms,
 			Waiting: snapshot.WaitingRooms,
 			Active:  snapshot.ActiveRooms,
 		},
-		Limits: statusLimits{
+		Limits: relaystatus.Limits{
 			MaxRooms:            snapshot.MaxRooms,
 			RoomTTLSeconds:      int64(snapshot.RoomTTL.Seconds()),
 			ReapIntervalSeconds: int64(snapshot.ReapInterval.Seconds()),
 			MaxMessageSizeBytes: maxMessageSize,
 		},
-		Transport: statusTransport{
+		Transport: relaystatus.Transport{
 			SignalExchanges:  msnap.SignalExchanges,
 			SignalingStarted: msnap.SignalingStarted,
 			RoomsRelayed:     msnap.RoomsRelayed,

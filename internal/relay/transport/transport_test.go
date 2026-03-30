@@ -9,18 +9,23 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/dunamismax/bore/internal/relay/room"
+	relaystatus "github.com/dunamismax/bore/internal/relay/status"
 	"nhooyr.io/websocket"
 )
 
 // testServer creates a relay server backed by an httptest.Server.
 func testServer(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
+	t.Setenv("BORE_WEB_DIST_DIR", filepath.Join(t.TempDir(), "missing"))
+
 	reg := room.NewRegistry(room.DefaultRegistryConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 	reg.RunReaper(ctx)
@@ -30,12 +35,14 @@ func testServer(t *testing.T) (*Server, *httptest.Server) {
 		Registry: reg,
 	}
 	srv := NewServer(cfg)
-	ts := httptest.NewUnstartedServer(srv.Handler())
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen tcp4 127.0.0.1:0: %v", err)
 	}
-	ts.Listener = listener
+	ts := &httptest.Server{
+		Listener: listener,
+		Config:   &http.Server{Handler: srv.Handler()},
+	}
 	ts.Start()
 	t.Cleanup(ts.Close)
 	return srv, ts
@@ -71,13 +78,13 @@ func TestRelay_StatusEndpoints(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	health := httpGetJSON[healthResponse](t, ts.URL+"/healthz")
-	if health.Service != "bore-relay" || health.Status != "ok" {
+	health := httpGetJSON[relaystatus.HealthResponse](t, ts.URL+"/healthz")
+	if health.Service != relaystatus.ServiceName || health.Status != relaystatus.SteadyState {
 		t.Fatalf("health = %+v, want service bore-relay / status ok", health)
 	}
 
-	status := httpGetJSON[statusResponse](t, ts.URL+"/status")
-	if status.Service != "bore-relay" || status.Status != "ok" {
+	status := httpGetJSON[relaystatus.Response](t, ts.URL+"/status")
+	if status.Service != relaystatus.ServiceName || status.Status != relaystatus.SteadyState {
 		t.Fatalf("status = %+v, want service bore-relay / status ok", status)
 	}
 	if status.Rooms.Total != 0 || status.Rooms.Waiting != 0 || status.Rooms.Active != 0 {
@@ -95,10 +102,30 @@ func TestRelay_StatusEndpoints(t *testing.T) {
 	sender, _ := dialSender(t, ctx, ts)
 	defer sender.CloseNow()
 
-	status = httpGetJSON[statusResponse](t, ts.URL+"/status")
+	status = httpGetJSON[relaystatus.Response](t, ts.URL+"/status")
 	if status.Rooms.Total != 1 || status.Rooms.Waiting != 1 || status.Rooms.Active != 0 {
 		t.Fatalf("waiting relay status = %+v, want total=1 waiting=1 active=0", status.Rooms)
 	}
+}
+
+func TestRelay_StatusJSONContractShape(t *testing.T) {
+	_, ts := testServer(t)
+
+	resp, err := http.Get(ts.URL + "/status")
+	if err != nil {
+		t.Fatalf("GET /status: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode /status: %v", err)
+	}
+
+	assertJSONKeys(t, payload, "service", "status", "uptimeSeconds", "rooms", "limits", "transport")
+	assertNestedJSONKeys(t, payload, "rooms", "total", "waiting", "active")
+	assertNestedJSONKeys(t, payload, "limits", "maxRooms", "roomTTLSeconds", "reapIntervalSeconds", "maxMessageSizeBytes")
+	assertNestedJSONKeys(t, payload, "transport", "signalExchanges", "signalingStarted", "roomsRelayed", "bytesRelayed", "framesRelayed")
 }
 
 func TestRelay_WebSurface(t *testing.T) {
@@ -119,11 +146,11 @@ func TestRelay_WebSurface(t *testing.T) {
 		t.Fatalf("read / body: %v", err)
 	}
 	rootHTML := string(rootBody)
-	if !strings.Contains(rootHTML, `bore relay`) {
-		t.Fatalf("GET / body missing relay identification")
+	if !strings.Contains(rootHTML, `Web assets are not built yet.`) {
+		t.Fatalf("GET / body missing fallback web status message")
 	}
-	if !strings.Contains(rootHTML, `/status`) {
-		t.Fatalf("GET / body missing /status link")
+	if !strings.Contains(rootHTML, `bun run build`) {
+		t.Fatalf("GET / body missing build instructions")
 	}
 }
 
@@ -138,7 +165,7 @@ func TestRelay_HTTPHeaders(t *testing.T) {
 		{
 			path:        "/",
 			contentType: "text/html",
-			cspContains: []string{"default-src 'none'", "style-src 'unsafe-inline'", "frame-ancestors 'none'"},
+			cspContains: []string{"default-src 'self'", "connect-src 'self'", "frame-ancestors 'none'"},
 		},
 		{
 			path:        "/healthz",
@@ -650,7 +677,7 @@ func TestRelay_TransportStatsAfterRelay(t *testing.T) {
 	}
 
 	// Check transport stats are non-zero.
-	status := httpGetJSON[statusResponse](t, ts.URL+"/status")
+	status := httpGetJSON[relaystatus.Response](t, ts.URL+"/status")
 	if status.Transport.RoomsRelayed < 1 {
 		t.Fatalf("expected roomsRelayed >= 1, got %d", status.Transport.RoomsRelayed)
 	}
@@ -660,6 +687,42 @@ func TestRelay_TransportStatsAfterRelay(t *testing.T) {
 	if status.Transport.FramesRelayed < 1 {
 		t.Fatalf("expected framesRelayed >= 1, got %d", status.Transport.FramesRelayed)
 	}
+}
+
+func assertJSONKeys(t *testing.T, payload map[string]any, want ...string) {
+	t.Helper()
+
+	if len(payload) != len(want) {
+		t.Fatalf("json keys = %v, want %v", sortedMapKeys(payload), want)
+	}
+	for _, key := range want {
+		if _, ok := payload[key]; !ok {
+			t.Fatalf("json keys = %v, missing %q", sortedMapKeys(payload), key)
+		}
+	}
+}
+
+func assertNestedJSONKeys(t *testing.T, payload map[string]any, field string, want ...string) {
+	t.Helper()
+
+	raw, ok := payload[field]
+	if !ok {
+		t.Fatalf("json payload missing %q", field)
+	}
+	nested, ok := raw.(map[string]any)
+	if !ok {
+		t.Fatalf("json field %q = %T, want object", field, raw)
+	}
+	assertJSONKeys(t, nested, want...)
+}
+
+func sortedMapKeys(payload map[string]any) []string {
+	keys := make([]string, 0, len(payload))
+	for key := range payload {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
 }
 
 func TestRelay_CleanCloseHandshake(t *testing.T) {

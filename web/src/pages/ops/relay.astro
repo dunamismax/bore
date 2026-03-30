@@ -1,0 +1,38 @@
+---
+import RelayStatusPanel from "../../components/RelayStatusPanel.vue";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="bore | relay operator status"
+  description="Read-only relay status, served same-origin from the Go relay and refreshed in the browser without a separate Python runtime."
+>
+  <section class="two-up">
+    <article class="panel">
+      <p class="eyebrow">Operator-facing surface</p>
+      <h1>Relay status, without pretending it is a control plane.</h1>
+      <p class="lede">
+        This page reads aggregate service data from the current relay at
+        <code>/status</code>. The relay serves as a signaling server for direct
+        peer-to-peer setup and as a fallback transport when direct connection fails.
+      </p>
+      <p>
+        The scope stays read-only: uptime, room counts, signaling activity, and
+        configured limits. No auth UI. No writes. No hidden backend.
+      </p>
+    </article>
+    <aside class="panel panel--aside">
+      <p class="eyebrow">Current scope</p>
+      <p>
+        The relay remains payload-blind. It coordinates direct connection setup and
+        forwards encrypted bytes only when the direct path does not hold.
+      </p>
+      <p>
+        For the terminal lane today, <code>bore-admin status</code> reads the same
+        contract. A dedicated TUI belongs to a later phase.
+      </p>
+    </aside>
+  </section>
+
+  <RelayStatusPanel client:load />
+</BaseLayout>

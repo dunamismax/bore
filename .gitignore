@@ -6,6 +6,7 @@ target/
 /punchthrough
 /web/node_modules
 /web/.astro
+/web/dist
 *.test
 vendor/
 
