@@ -4,25 +4,26 @@ import AppLayout from "../layouts/AppLayout.astro";
 
 <AppLayout
   title="Bore v2 workspace"
-  description="Phase 1 v2 workspace skeleton for Bore."
+  description="Phase 3 web-foundation milestone for Bore v2."
 >
   <section class="hero">
     <div>
-      <p class="eyebrow">Phase 1 milestone</p>
-      <h2>One root workspace, one API lane, one web lane.</h2>
+      <p class="eyebrow">Phase 3 milestone</p>
+      <h2>Typed browser flows are now wired into the real v2 API lane.</h2>
       <p>
-        This repo still ships the Go relay, CLI, legacy `web/`, and `tui/` as v1.
-        The new lane under <code>apps/</code> and <code>packages/</code> is a real
-        runtime skeleton for v2, not a completion claim.
+        This repo still ships the Go relay, CLI, legacy <code>web/</code>, and
+        <code>tui/</code> as v1. The v2 lane under <code>apps/</code> and
+        <code>packages/</code> now goes beyond route placeholders by creating,
+        loading, joining, and summarizing real PostgreSQL-backed sessions.
       </p>
     </div>
     <div class="panel">
       <h3>What exists now</h3>
       <ul class="stack-list">
         <li>Root Bun workspace for the v2 rewrite</li>
-        <li>Elysia API with typed config, health, and readiness</li>
-        <li>Astro + Vue app routed through Caddy</li>
-        <li>Shared Zod contracts for runtime status payloads</li>
+        <li>Elysia API with durable session and operator-summary endpoints</li>
+        <li>Astro + Vue pages for send, receive, and ops flows</li>
+        <li>Shared Zod contracts plus a typed browser API client</li>
       </ul>
     </div>
   </section>
@@ -31,8 +32,8 @@ import AppLayout from "../layouts/AppLayout.astro";
     <article class="panel">
       <h3>Send</h3>
       <p>
-        The send flow route exists now so the web app can grow around a stable
-        product path instead of a placeholder home page only.
+        Create a real session from the browser and get a verified rendezvous code
+        back from the v2 API.
       </p>
       <a class="button" href="/send">Open send shell</a>
     </article>
@@ -40,8 +41,8 @@ import AppLayout from "../layouts/AppLayout.astro";
     <article class="panel">
       <h3>Receive</h3>
       <p>
-        Dynamic receive routes are live under <code>/receive/[code]</code>. They are
-        placeholders today, but the route shape is already part of the real app.
+        Dynamic receive routes now load typed session state and let a receiver join
+        the waiting shell.
       </p>
       <a class="button" href="/receive/demo-code">Open receive shell</a>
     </article>
@@ -49,8 +50,8 @@ import AppLayout from "../layouts/AppLayout.astro";
     <article class="panel">
       <h3>Ops</h3>
       <p>
-        The ops route is the first v2 operator surface. Right now it focuses on the
-        new API stack health instead of v1 relay state.
+        The ops route now shows health and live v2 operator summary data without the
+        legacy Go <code>/status</code> dependency.
       </p>
       <a class="button" href="/ops">Open ops shell</a>
     </article>

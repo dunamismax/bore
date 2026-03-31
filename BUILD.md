@@ -139,24 +139,24 @@ Bore is in an active rewrite program. `README.md` and `ARCHITECTURE.md` describe
 
 ### Objectives
 
-- [ ] Make the browser flows usable before transfer streaming lands.
-- [ ] Keep Astro in charge of route ownership and shell composition.
-- [ ] Ensure the UI consumes typed contracts instead of ad hoc JSON.
+- [x] Make the browser flows usable before transfer streaming lands.
+- [x] Keep Astro in charge of route ownership and shell composition.
+- [x] Ensure the UI consumes typed contracts instead of ad hoc JSON.
 
 ### Checklist
 
 - [x] Build Astro routes for `/`, `/send`, `/receive/[code]`, and `/ops`.
-- [ ] Add Vue composables or state only where session creation and join flows genuinely need it.
-- [ ] Add a shared typed client over `packages/contracts`.
-- [ ] Add browser-visible error, loading, and validation states backed by shared schemas.
-- [ ] Render operator pages from v2 APIs instead of the Go `/status` contract.
+- [x] Add Vue composables or state only where session creation and join flows genuinely need it.
+- [x] Add a shared typed client over `packages/contracts`.
+- [x] Add browser-visible error, loading, and validation states backed by shared schemas.
+- [x] Render operator pages from v2 APIs instead of the Go `/status` contract.
 
 ### Exit criteria
 
-- [ ] A sender can create a session from the v2 web UI.
-- [ ] A receiver can open a join route and attach to that session shell.
-- [ ] Operator pages render live session data from the v2 API lane.
-- [ ] No primary v2 page depends on untyped payload parsing.
+- [x] A sender can create a session from the v2 web UI.
+- [x] A receiver can open a join route and attach to that session shell.
+- [x] Operator pages render live session data from the v2 API lane.
+- [x] No primary v2 page depends on untyped payload parsing.
 
 ### Verification
 

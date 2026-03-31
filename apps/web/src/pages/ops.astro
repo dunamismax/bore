@@ -1,21 +1,23 @@
 ---
 import HealthSnapshot from "../components/HealthSnapshot.vue";
+import OpsSummaryPanel from "../components/OpsSummaryPanel.vue";
 import AppLayout from "../layouts/AppLayout.astro";
 ---
 
 <AppLayout
   title="Ops | Bore v2"
-  description="Phase 1 operator shell for Bore v2."
+  description="Monitor Bore v2 health and operator session summary."
 >
   <section class="panel">
     <p class="eyebrow">Ops route</p>
-    <h2>v2 runtime health</h2>
+    <h2>v2 runtime health and session summary</h2>
     <p>
       This operator shell tracks the new API lane, not the shipped Go relay status.
-      The v1 relay operator surfaces still live under the legacy `web/` and `tui/`
-      projects.
+      The v1 relay operator surfaces still live under the legacy <code>web/</code>
+      and <code>tui/</code> projects.
     </p>
   </section>
 
   <HealthSnapshot client:load />
+  <OpsSummaryPanel client:load />
 </AppLayout>

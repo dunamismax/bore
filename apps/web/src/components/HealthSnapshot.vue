@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import {
-  type HealthPayload,
-  healthPayloadSchema,
-  type ReadinessPayload,
-  readinessPayloadSchema,
-} from "@bore/contracts";
+import type { HealthPayload, ReadinessPayload } from "@bore/contracts";
 import { onMounted, ref } from "vue";
 
+import { createBoreApiClient } from "../lib/api";
+
+const client = createBoreApiClient();
 const health = ref<HealthPayload | null>(null);
 const readiness = ref<ReadinessPayload | null>(null);
 const error = ref<string | null>(null);
@@ -17,16 +15,10 @@ async function refresh() {
   error.value = null;
 
   try {
-    const [healthResponse, readinessResponse] = await Promise.all([
-      fetch("/api/health"),
-      fetch("/api/readiness"),
+    [health.value, readiness.value] = await Promise.all([
+      client.getHealth(),
+      client.getReadiness(),
     ]);
-
-    const healthJson = await healthResponse.json();
-    const readinessJson = await readinessResponse.json();
-
-    health.value = healthPayloadSchema.parse(healthJson);
-    readiness.value = readinessPayloadSchema.parse(readinessJson);
   } catch (caughtError) {
     error.value =
       caughtError instanceof Error

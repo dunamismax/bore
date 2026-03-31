@@ -1,4 +1,5 @@
 ---
+import JoinSessionPanel from "../../components/JoinSessionPanel.vue";
 import AppLayout from "../../layouts/AppLayout.astro";
 
 export const prerender = false;
@@ -8,15 +9,7 @@ const code = Astro.params.code ?? "unknown";
 
 <AppLayout
   title={`Receive ${code} | Bore v2`}
-  description="Phase 1 receive route shell for Bore v2."
+  description="Load and join a Bore v2 transfer session from the browser."
 >
-  <section class="panel">
-    <p class="eyebrow">Receive route</p>
-    <h2>Join code: <code>{code}</code></h2>
-    <p>
-      This route establishes the final URL shape for browser receive flows without
-      pretending the transfer protocol is done. A future phase will hydrate this page
-      with join validation, session state, and file receive UX.
-    </p>
-  </section>
+  <JoinSessionPanel client:load code={code} />
 </AppLayout>

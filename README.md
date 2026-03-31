@@ -19,7 +19,7 @@ The primary terminal operator surface now lives in `tui/` as an OpenTUI console 
 
 **v1.0.1** -- current stable release with relay and browser-surface hardening. Current truth:
 
-Rewrite note: `BUILD.md` is the active execution manual for the v2 full rewrite onto Bun + TypeScript + Astro + Vue + Elysia + Zod + PostgreSQL + Docker Compose + Caddy. This README still describes the shipped v1 codebase that exists today, while the repo now also contains a real Phase 2 backend-foundation v2 workspace under `apps/`, `packages/`, `infra/`, and `db/`.
+Rewrite note: `BUILD.md` is the active execution manual for the v2 full rewrite onto Bun + TypeScript + Astro + Vue + Elysia + Zod + PostgreSQL + Docker Compose + Caddy. This README still describes the shipped v1 codebase that exists today, while the repo now also contains a real Phase 3 web-foundation v2 workspace under `apps/`, `packages/`, `infra/`, and `db/`.
 
 - the repo is one Go module rooted at `github.com/dunamismax/bore`
 - binaries live under `cmd/`: `bore`, `relay`, `bore-admin`, and `punchthrough`
@@ -62,11 +62,12 @@ Rewrite note: `BUILD.md` is the active execution manual for the v2 full rewrite 
 
 ## What Exists For v2 Today
 
-The rewrite is no longer doc-only. The repo now contains a verified Phase 2 backend-foundation landing zone for the next-generation stack:
+The rewrite is no longer doc-only. The repo now contains a verified Phase 3 web-foundation landing zone for the next-generation stack:
 
 - root Bun workspace with shared `lint`, `check`, `test`, `build`, and `verify` commands
 - `apps/api` Elysia service with typed env parsing, boot-time SQL migration application, `/api/health`, `/api/readiness`, `/api/sessions`, `/api/sessions/:code`, `/api/sessions/:code/join`, and `/api/ops/summary`
-- `apps/web` Astro + Vue app with the early route structure for `/`, `/send`, `/receive/[code]`, and `/ops`
+- `apps/web` Astro + Vue app with typed send, receive, and ops shells for `/`, `/send`, `/receive/[code]`, and `/ops`
+- a shared browser API client over `packages/contracts` so web fetches stay schema-validated instead of ad hoc JSON parsing
 - `packages/contracts` with shared Zod schemas for health, readiness, session, operator-summary, error payloads, and typed coordination envelopes for the upcoming realtime lane
 - `db/migrations` plus checked-in Bun runners for `db:migrate` and `db:reset`
 - `infra/caddy/Caddyfile`, `docker-compose.yml`, and `.env.example` so the v2 lane runs as `caddy + api + postgres + web`
