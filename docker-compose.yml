@@ -17,6 +17,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-bore_v2}
       POSTGRES_USER: ${POSTGRES_USER:-bore}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bore}
+    ports:
+      - "127.0.0.1:${BORE_V2_POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test:
         - CMD-SHELL

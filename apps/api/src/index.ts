@@ -1,6 +1,7 @@
 import { createApp } from "./app";
 import { parseConfig } from "./config";
 import { createDatabaseClient } from "./db";
+import { runMigrations } from "./migrations";
 
 const config = parseConfig(process.env);
 const sql = createDatabaseClient(config);
@@ -17,6 +18,8 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     void shutdown(signal);
   });
 }
+
+await runMigrations(sql);
 
 app.listen(
   {

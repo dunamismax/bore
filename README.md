@@ -19,7 +19,7 @@ The primary terminal operator surface now lives in `tui/` as an OpenTUI console 
 
 **v1.0.1** -- current stable release with relay and browser-surface hardening. Current truth:
 
-Rewrite note: `BUILD.md` is the active execution manual for the v2 full rewrite onto Bun + TypeScript + Astro + Vue + Elysia + Zod + PostgreSQL + Docker Compose + Caddy. This README still describes the shipped v1 codebase that exists today, while the repo now also contains a real Phase 1 v2 workspace under `apps/`, `packages/`, and `infra/`.
+Rewrite note: `BUILD.md` is the active execution manual for the v2 full rewrite onto Bun + TypeScript + Astro + Vue + Elysia + Zod + PostgreSQL + Docker Compose + Caddy. This README still describes the shipped v1 codebase that exists today, while the repo now also contains a real Phase 2 backend-foundation v2 workspace under `apps/`, `packages/`, `infra/`, and `db/`.
 
 - the repo is one Go module rooted at `github.com/dunamismax/bore`
 - binaries live under `cmd/`: `bore`, `relay`, `bore-admin`, and `punchthrough`
@@ -62,12 +62,13 @@ Rewrite note: `BUILD.md` is the active execution manual for the v2 full rewrite 
 
 ## What Exists For v2 Today
 
-The rewrite is no longer doc-only. The repo now contains a verified Phase 1 landing zone for the next-generation stack:
+The rewrite is no longer doc-only. The repo now contains a verified Phase 2 backend-foundation landing zone for the next-generation stack:
 
 - root Bun workspace with shared `lint`, `check`, `test`, `build`, and `verify` commands
-- `apps/api` Elysia service with typed env parsing plus `/api/health` and `/api/readiness`
+- `apps/api` Elysia service with typed env parsing, boot-time SQL migration application, `/api/health`, `/api/readiness`, `/api/sessions`, `/api/sessions/:code`, `/api/sessions/:code/join`, and `/api/ops/summary`
 - `apps/web` Astro + Vue app with the early route structure for `/`, `/send`, `/receive/[code]`, and `/ops`
-- `packages/contracts` with shared Zod schemas for health and readiness payloads
+- `packages/contracts` with shared Zod schemas for health, readiness, session, operator-summary, and error payloads
+- `db/migrations` plus checked-in Bun runners for `db:migrate` and `db:reset`
 - `infra/caddy/Caddyfile`, `docker-compose.yml`, and `.env.example` so the v2 lane runs as `caddy + api + postgres + web`
 
 This is still a build-phase scaffold, not a cutover claim. The shipped product remains the Go-first v1 described above.
@@ -110,6 +111,12 @@ If port `8080` is already in use locally, override it for the v2 stack run:
 
 ```bash
 BORE_V2_HTTP_PORT=18080 docker compose up -d --build
+```
+
+If local PostgreSQL is already using `5432`, override the v2 Compose mapping too:
+
+```bash
+BORE_V2_POSTGRES_PORT=15432 docker compose up -d --build
 ```
 
 Once the stack is up:
@@ -256,6 +263,15 @@ bun run build
 bun run verify
 docker compose up -d --build
 # or: BORE_V2_HTTP_PORT=18080 docker compose up -d --build
+# or: BORE_V2_POSTGRES_PORT=15432 docker compose up -d --build
+```
+
+### v2 database foundation
+
+```bash
+BORE_V2_DATABASE_URL=postgres://bore:bore@127.0.0.1:5432/bore_v2 bun run --cwd apps/api db:reset
+BORE_V2_DATABASE_URL=postgres://bore:bore@127.0.0.1:5432/bore_v2 bun run --cwd apps/api db:migrate
+BORE_V2_DATABASE_TEST_URL=postgres://bore:bore@127.0.0.1:5432/bore_v2 bun --cwd apps/api test tests/integration.test.ts
 ```
 
 ### Operator TUI
@@ -308,6 +324,8 @@ go build ./cmd/bore-admin
 ├── apps/
 │   ├── api/
 │   └── web/
+├── db/
+│   └── migrations/
 ├── internal/
 │   ├── client/
 │   │   ├── code/

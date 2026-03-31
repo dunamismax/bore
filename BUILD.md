@@ -14,7 +14,7 @@ Bore is in an active rewrite program. `README.md` and `ARCHITECTURE.md` describe
 - [x] Relay room state is still in memory for v1.
 - [x] Resumable receive state is still stored as local JSON on disk for v1.
 - [x] No durable PostgreSQL-backed Bore service database is part of the shipped product yet.
-- [x] A real v2 landing zone now exists at repo root with `apps/api`, `apps/web`, `packages/contracts`, `infra/caddy`, `.env.example`, and `docker-compose.yml`.
+- [x] A real v2 landing zone now exists at repo root with `apps/api`, `apps/web`, `packages/contracts`, `infra/caddy`, `db/migrations`, `.env.example`, and `docker-compose.yml`.
 - [x] The v2 workspace already exposes root `lint`, `check`, `test`, `build`, and `verify` commands.
 - [ ] v2 is the shipped primary product.
 - [ ] Go is retired from the primary product path.
@@ -110,29 +110,29 @@ Bore is in an active rewrite program. `README.md` and `ARCHITECTURE.md` describe
 
 ### Objectives
 
-- [ ] Move session coordination and durable metadata ownership into Elysia.
-- [ ] Replace Go-owned in-memory-only session truth for the v2 lane.
-- [ ] Make PostgreSQL-backed session recovery real.
+- [x] Move session coordination and durable metadata ownership into Elysia.
+- [x] Replace Go-owned in-memory-only session truth for the v2 lane.
+- [x] Make PostgreSQL-backed session recovery real.
 
 ### Checklist
 
-- [ ] Add SQL migrations for transfer sessions, participants, file metadata, and event history.
-- [ ] Implement session create, join, read, and operator summary endpoints.
+- [x] Add SQL migrations for transfer sessions, participants, file metadata, and event history.
+- [x] Implement session create, join, read, and operator summary endpoints.
 - [ ] Add typed realtime envelopes for coordination events.
 - [ ] Add structured logs, rate limits, request-size limits, and timeouts.
-- [ ] Keep all externally consumed payloads defined in shared Zod schemas.
+- [x] Keep all externally consumed payloads defined in shared Zod schemas.
 
 ### Exit criteria
 
-- [ ] Elysia can create, read, and advance transfer sessions against PostgreSQL.
-- [ ] Operator-visible status no longer depends on Go in-memory room state for the v2 path.
-- [ ] Restarting the v2 stack preserves session metadata needed for recovery and audit history.
+- [x] Elysia can create, read, and advance transfer sessions against PostgreSQL.
+- [x] Operator-visible status no longer depends on Go in-memory room state for the v2 path.
+- [x] Restarting the v2 stack preserves session metadata needed for recovery and audit history.
 
 ### Verification
 
-- [ ] API unit tests for handlers and validation failures.
-- [ ] Integration tests against PostgreSQL in Docker Compose.
-- [ ] Migration up and reset smoke checks.
+- [x] API unit tests for handlers and validation failures.
+- [x] Integration tests against PostgreSQL in Docker Compose.
+- [x] Migration up and reset smoke checks.
 - [ ] Realtime contract tests for coordination message envelopes.
 
 ## Phase 3 - Build the web application foundation
@@ -145,7 +145,7 @@ Bore is in an active rewrite program. `README.md` and `ARCHITECTURE.md` describe
 
 ### Checklist
 
-- [ ] Build Astro routes for `/`, `/send`, `/receive/[code]`, and `/ops`.
+- [x] Build Astro routes for `/`, `/send`, `/receive/[code]`, and `/ops`.
 - [ ] Add Vue composables or state only where session creation and join flows genuinely need it.
 - [ ] Add a shared typed client over `packages/contracts`.
 - [ ] Add browser-visible error, loading, and validation states backed by shared schemas.
@@ -161,7 +161,7 @@ Bore is in an active rewrite program. `README.md` and `ARCHITECTURE.md` describe
 ### Verification
 
 - [ ] Component and composable tests with Bun.
-- [ ] `astro check` passes for the v2 web app.
+- [x] `astro check` passes for the v2 web app.
 - [ ] Browser smoke coverage for create-session and join-session shells.
 - [ ] Responsive checks for mobile and desktop widths.
 

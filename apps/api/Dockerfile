@@ -6,6 +6,7 @@ COPY package.json bun.lock tsconfig.base.json biome.json ./
 COPY scripts ./scripts
 COPY apps ./apps
 COPY packages ./packages
+COPY db ./db
 
 RUN bun install --frozen-lockfile
 RUN bun run build

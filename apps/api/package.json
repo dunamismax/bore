@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun dist/index.js",
+    "db:migrate": "bun src/manage-db.ts migrate",
+    "db:reset": "bun src/manage-db.ts reset",
     "lint": "biome check .",
     "check": "tsc --noEmit",
     "test": "bun test",

@@ -13,7 +13,7 @@ The repo is still rooted in a single Go module: `github.com/dunamismax/bore`.
 Bore is currently a **dual-track repo**:
 
 - shipped v1 remains the Go-first, P2P-first, relay-fallback product documented in this file
-- an active v2 Phase 1 rewrite lane now exists under `apps/`, `packages/`, and `infra/` as a Bun workspace fronted by Caddy
+- an active v2 Phase 2 backend-foundation rewrite lane now exists under `apps/`, `packages/`, `infra/`, and `db/` as a Bun workspace fronted by Caddy
 
 The default shipped transfer path is still direct peer-to-peer. The relay serves as a signaling server for the P2P connection and as a fallback transport when direct fails.
 
@@ -54,7 +54,7 @@ The default shipped transfer path is still direct peer-to-peer. The relay serves
 4. **Operator TUI (`tui/`)** is the primary terminal operator surface, built with OpenTUI on Bun and fed by the relay's Go-owned `/status` contract.
 5. **Punchthrough (`cmd/punchthrough` + `internal/punchthrough/`)** contains STUN and UDP hole-punching primitives, integrated into the client's default transport path.
 6. **bore-admin (`cmd/bore-admin`)** remains a compatibility CLI for terse relay status checks alongside the OpenTUI operator console.
-7. **v2 rewrite lane (`apps/`, `packages/`, `infra/`)** is the active Phase 1 landing zone for the next architecture: Caddy fronts an Astro + Vue app and an Elysia API, with shared Zod contracts and PostgreSQL in Docker Compose. It is real repo state, but not the shipped product path yet.
+7. **v2 rewrite lane (`apps/`, `packages/`, `infra/`, `db/`)** is the active backend-foundation landing zone for the next architecture: Caddy fronts an Astro + Vue app and an Elysia API, with shared Zod contracts, checked-in SQL migrations, and PostgreSQL in Docker Compose. It is real repo state, but not the shipped product path yet.
 
 ---
 
@@ -68,8 +68,11 @@ cmd/
 └── relay/                   # relay entry point
 
 apps/
-├── api/                     # Elysia v2 API skeleton
+├── api/                     # Elysia v2 API lane + session foundation
 └── web/                     # Astro + Vue v2 web shell
+
+db/
+└── migrations/              # checked-in SQL migrations for v2 session metadata
 
 internal/
 ├── client/
@@ -119,14 +122,15 @@ tui/
 
 ---
 
-## v2 rewrite landing zone (Phase 1)
+## v2 rewrite landing zone (Phase 2 backend foundation)
 
 The rewrite lane now has a concrete runtime skeleton in repo:
 
-- `apps/api` boots an Elysia service on Bun with typed env parsing plus `/api/health` and `/api/readiness`
+- `apps/api` boots an Elysia service on Bun with typed env parsing, boot-time SQL migration application, `/api/health`, `/api/readiness`, `/api/sessions`, `/api/sessions/:code`, `/api/sessions/:code/join`, and `/api/ops/summary`
 - `apps/web` boots an Astro + Vue app with the first route structure for `/`, `/send`, `/receive/[code]`, and `/ops`
-- `packages/contracts` owns the shared Zod health and readiness schemas used by both sides
-- `infra/caddy/Caddyfile` and `docker-compose.yml` define the default v2 local topology: `caddy -> web/api`, with PostgreSQL private on the Compose network
+- `packages/contracts` owns the shared Zod health, readiness, session, operator-summary, and error schemas used across the v2 lane
+- `db/migrations` plus the checked-in Bun migration runners establish PostgreSQL-backed session metadata, participant records, file metadata, and lifecycle event history
+- `infra/caddy/Caddyfile` and `docker-compose.yml` define the default v2 local topology: `caddy -> web/api`, with PostgreSQL private on the Compose network and an optional localhost port mapping for host-side integration checks
 
 That lane is intentionally isolated from `cmd/` and `internal/`. The Go product remains the source of shipped behavior until the rewrite phases in `BUILD.md` complete.
 
