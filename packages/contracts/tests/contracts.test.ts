@@ -178,7 +178,7 @@ describe("contracts", () => {
   test("parses a typed error payload", () => {
     const payload = apiErrorPayloadSchema.parse({
       error: {
-        code: "bad_request",
+        code: "rate_limited",
         message: "invalid request",
         issues: [
           {
@@ -190,6 +190,6 @@ describe("contracts", () => {
       },
     });
 
-    expect(payload.error.code).toBe("bad_request");
+    expect(payload.error.code).toBe("rate_limited");
   });
 });

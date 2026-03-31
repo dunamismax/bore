@@ -2,11 +2,25 @@ import { runtimeEnvironmentSchema } from "@bore/contracts";
 import { z } from "zod";
 
 const portSchema = z.coerce.number().int().min(1).max(65535);
+const positiveIntegerSchema = z.coerce.number().int().positive();
 
 const envSchema = z.object({
   NODE_ENV: runtimeEnvironmentSchema.default("development"),
   BORE_V2_API_HOST: z.string().min(1).default("0.0.0.0"),
   BORE_V2_API_PORT: portSchema.default(3000),
+  BORE_V2_API_REQUEST_TIMEOUT_MS: positiveIntegerSchema
+    .max(60_000)
+    .default(5_000),
+  BORE_V2_API_IDLE_TIMEOUT_SECONDS: positiveIntegerSchema.max(300).default(30),
+  BORE_V2_API_MAX_REQUEST_BODY_BYTES: positiveIntegerSchema
+    .max(1_048_576)
+    .default(65_536),
+  BORE_V2_API_RATE_LIMIT_WINDOW_MS: positiveIntegerSchema
+    .max(3_600_000)
+    .default(60_000),
+  BORE_V2_API_RATE_LIMIT_MAX_REQUESTS: positiveIntegerSchema
+    .max(1_000)
+    .default(30),
   BORE_V2_APP_VERSION: z.string().min(1).default("0.0.0-phase1"),
   BORE_V2_PUBLIC_ORIGIN: z.string().url().default("http://localhost:8080"),
   BORE_V2_DATABASE_URL: z
@@ -33,6 +47,11 @@ export function parseConfig(env: Record<string, string | undefined>) {
     environment: parsed.NODE_ENV,
     host: parsed.BORE_V2_API_HOST,
     port: parsed.BORE_V2_API_PORT,
+    requestTimeoutMs: parsed.BORE_V2_API_REQUEST_TIMEOUT_MS,
+    idleTimeoutSeconds: parsed.BORE_V2_API_IDLE_TIMEOUT_SECONDS,
+    maxRequestBodyBytes: parsed.BORE_V2_API_MAX_REQUEST_BODY_BYTES,
+    rateLimitWindowMs: parsed.BORE_V2_API_RATE_LIMIT_WINDOW_MS,
+    rateLimitMaxRequests: parsed.BORE_V2_API_RATE_LIMIT_MAX_REQUESTS,
     version: parsed.BORE_V2_APP_VERSION,
     publicOrigin: parsed.BORE_V2_PUBLIC_ORIGIN,
     databaseUrl: parsed.BORE_V2_DATABASE_URL,

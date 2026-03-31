@@ -39,6 +39,9 @@ export const apiErrorCodeSchema = z.enum([
   "bad_request",
   "not_found",
   "conflict",
+  "payload_too_large",
+  "rate_limited",
+  "timeout",
   "internal_error",
 ]);
 

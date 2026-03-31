@@ -1,14 +1,16 @@
 import { createApp } from "./app";
 import { parseConfig } from "./config";
 import { createDatabaseClient } from "./db";
+import { createJsonLogger } from "./logger";
 import { runMigrations } from "./migrations";
 
 const config = parseConfig(process.env);
 const sql = createDatabaseClient(config);
-const app = createApp({ config, sql });
+const logger = createJsonLogger();
+const app = createApp({ config, sql, logger });
 
 async function shutdown(signal: string) {
-  console.log(`shutting down api after ${signal}`);
+  logger.info("api_shutdown", { signal });
   await sql.end({ timeout: 5 });
   process.exit(0);
 }
@@ -25,10 +27,19 @@ app.listen(
   {
     hostname: config.host,
     port: config.port,
+    idleTimeout: config.idleTimeoutSeconds,
+    maxRequestBodySize: config.maxRequestBodyBytes,
   },
   ({ hostname, port }) => {
-    console.log(
-      `bore v2 api listening on http://${hostname}:${port} for ${config.environment}`,
-    );
+    logger.info("api_started", {
+      url: `http://${hostname}:${port}`,
+      environment: config.environment,
+      requestTimeoutMs: config.requestTimeoutMs,
+      idleTimeoutSeconds: config.idleTimeoutSeconds,
+      maxRequestBodyBytes: config.maxRequestBodyBytes,
+      rateLimitWindowMs: config.rateLimitWindowMs,
+      rateLimitMaxRequests: config.rateLimitMaxRequests,
+      version: config.version,
+    });
   },
 );

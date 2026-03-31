@@ -65,7 +65,7 @@ Rewrite note: `BUILD.md` is the active execution manual for the v2 full rewrite 
 The rewrite is no longer doc-only. The repo now contains a verified Phase 3 web-foundation landing zone for the next-generation stack:
 
 - root Bun workspace with shared `lint`, `check`, `test`, `build`, and `verify` commands
-- `apps/api` Elysia service with typed env parsing, boot-time SQL migration application, `/api/health`, `/api/readiness`, `/api/sessions`, `/api/sessions/:code`, `/api/sessions/:code/join`, and `/api/ops/summary`
+- `apps/api` Elysia service with typed env parsing, boot-time SQL migration application, structured JSON request logs, per-IP write-path rate limits, JSON body caps, request and idle timeout controls, plus `/api/health`, `/api/readiness`, `/api/sessions`, `/api/sessions/:code`, `/api/sessions/:code/join`, and `/api/ops/summary`
 - `apps/web` Astro + Vue app with typed send, receive, and ops shells for `/`, `/send`, `/receive/[code]`, and `/ops`
 - a shared browser API client over `packages/contracts` so web fetches stay schema-validated instead of ad hoc JSON parsing
 - Bun unit coverage for the typed web client and composables, including client-side and API-surfaced validation states
@@ -121,6 +121,14 @@ The v2 stack maps PostgreSQL to host port `15432` by default so it does not coll
 ```bash
 BORE_V2_POSTGRES_PORT=25432 docker compose up -d --build
 ```
+
+Useful API hardening knobs for the v2 lane live in `.env.example`:
+
+- `BORE_V2_API_REQUEST_TIMEOUT_MS`
+- `BORE_V2_API_IDLE_TIMEOUT_SECONDS`
+- `BORE_V2_API_MAX_REQUEST_BODY_BYTES`
+- `BORE_V2_API_RATE_LIMIT_WINDOW_MS`
+- `BORE_V2_API_RATE_LIMIT_MAX_REQUESTS`
 
 Once the stack is up:
 

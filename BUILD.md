@@ -36,7 +36,7 @@ Bore is in an active rewrite program. `README.md` and `ARCHITECTURE.md` describe
 
 - [x] Phase 0 - Freeze the rewrite charter.
 - [x] Phase 1 - Stand up the v2 workspace and runtime skeleton.
-- [ ] Phase 2 - Build backend foundation in Elysia.
+- [x] Phase 2 - Build backend foundation in Elysia.
 - [ ] Phase 3 - Build the web application foundation.
 - [ ] Phase 4 - Ship a relay-first secure transfer MVP.
 - [ ] Phase 5 - Recover the parity features that still matter.
@@ -119,7 +119,7 @@ Bore is in an active rewrite program. `README.md` and `ARCHITECTURE.md` describe
 - [x] Add SQL migrations for transfer sessions, participants, file metadata, and event history.
 - [x] Implement session create, join, read, and operator summary endpoints.
 - [x] Add typed realtime envelopes for coordination events.
-- [ ] Add structured logs, rate limits, request-size limits, and timeouts.
+- [x] Add structured logs, rate limits, request-size limits, and timeouts.
 - [x] Keep all externally consumed payloads defined in shared Zod schemas.
 
 ### Exit criteria

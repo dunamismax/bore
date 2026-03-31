@@ -12,6 +12,7 @@ import postgres from "postgres";
 
 import { createApp } from "../src/app";
 import type { AppConfig } from "../src/config";
+import type { Logger } from "../src/logger";
 import {
   SessionConflictError,
   SessionNotFoundError,
@@ -22,6 +23,11 @@ const config: AppConfig = {
   environment: "test",
   host: "127.0.0.1",
   port: 3000,
+  requestTimeoutMs: 5_000,
+  idleTimeoutSeconds: 30,
+  maxRequestBodyBytes: 65_536,
+  rateLimitWindowMs: 60_000,
+  rateLimitMaxRequests: 30,
   version: "0.0.0-test",
   publicOrigin: "http://localhost:8080",
   databaseUrl: "postgres://bore:bore@localhost:5432/bore_v2",
@@ -29,6 +35,12 @@ const config: AppConfig = {
 };
 
 const timestamp = "2026-03-31T14:00:00.000Z";
+
+const silentLogger: Logger = {
+  info() {},
+  warn() {},
+  error() {},
+};
 
 function makeSessionDetail(
   status: SessionDetail["status"] = "waiting_receiver",
@@ -132,6 +144,7 @@ describe("api app", () => {
       startedAt: new Date(Date.now() - 2_000),
       probe: async () => 8,
       sessions: makeSessionService(),
+      logger: silentLogger,
     });
 
     const response = await app.handle(
@@ -155,6 +168,7 @@ describe("api app", () => {
         throw new Error("database unavailable");
       },
       sessions: makeSessionService(),
+      logger: silentLogger,
     });
 
     const response = await app.handle(
@@ -177,6 +191,7 @@ describe("api app", () => {
       config,
       sql,
       sessions: makeSessionService(),
+      logger: silentLogger,
     });
 
     const response = await app.handle(
@@ -210,6 +225,7 @@ describe("api app", () => {
       config,
       sql,
       sessions: makeSessionService(),
+      logger: silentLogger,
     });
 
     const response = await app.handle(
@@ -241,6 +257,7 @@ describe("api app", () => {
       config,
       sql,
       sessions: makeSessionService(),
+      logger: silentLogger,
     });
 
     const response = await app.handle(
@@ -270,6 +287,7 @@ describe("api app", () => {
       config,
       sql,
       sessions,
+      logger: silentLogger,
     });
 
     const response = await app.handle(
@@ -293,6 +311,7 @@ describe("api app", () => {
       config,
       sql,
       sessions,
+      logger: silentLogger,
     });
 
     const response = await app.handle(
@@ -320,6 +339,7 @@ describe("api app", () => {
       config,
       sql,
       sessions: makeSessionService(),
+      logger: silentLogger,
     });
 
     const response = await app.handle(
@@ -343,6 +363,7 @@ describe("api app", () => {
       config,
       sql,
       sessions,
+      logger: silentLogger,
     });
 
     const response = await app.handle(
@@ -358,6 +379,114 @@ describe("api app", () => {
 
     expect(response.status).toBe(404);
     expect(payload.error.code).toBe("not_found");
+
+    await sql.end({ timeout: 0 });
+  });
+
+  test("returns a typed rate-limited error for repeated write requests", async () => {
+    const sql = postgres(config.databaseUrl, { max: 1, idle_timeout: 1 });
+    const app = createApp({
+      config: {
+        ...config,
+        rateLimitMaxRequests: 1,
+        rateLimitWindowMs: 60_000,
+      },
+      sql,
+      sessions: makeSessionService(),
+      logger: silentLogger,
+    });
+
+    const request = () =>
+      app.handle(
+        new Request("http://localhost/api/sessions", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-forwarded-for": "203.0.113.10",
+          },
+          body: JSON.stringify({
+            file: {
+              name: "report.pdf",
+              sizeBytes: 58213,
+            },
+            expiresInMinutes: 15,
+          }),
+        }),
+      );
+
+    const firstResponse = await request();
+    const secondResponse = await request();
+    const payload = apiErrorPayloadSchema.parse(await secondResponse.json());
+
+    expect(firstResponse.status).toBe(201);
+    expect(secondResponse.status).toBe(429);
+    expect(secondResponse.headers.get("retry-after")).toBe("60");
+    expect(payload.error.code).toBe("rate_limited");
+
+    await sql.end({ timeout: 0 });
+  });
+
+  test("returns a typed payload-too-large error for oversized JSON bodies", async () => {
+    const sql = postgres(config.databaseUrl, { max: 1, idle_timeout: 1 });
+    const app = createApp({
+      config: {
+        ...config,
+        maxRequestBodyBytes: 64,
+      },
+      sql,
+      sessions: makeSessionService(),
+      logger: silentLogger,
+    });
+
+    const response = await app.handle(
+      new Request("http://localhost/api/sessions", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": "256",
+        },
+        body: JSON.stringify({
+          file: {
+            name: "report.pdf",
+            sizeBytes: 58213,
+            mimeType: "application/pdf",
+          },
+          senderDisplayName: "Stephen",
+          expiresInMinutes: 15,
+        }),
+      }),
+    );
+    const payload = apiErrorPayloadSchema.parse(await response.json());
+
+    expect(response.status).toBe(413);
+    expect(payload.error.code).toBe("payload_too_large");
+
+    await sql.end({ timeout: 0 });
+  });
+
+  test("returns a typed timeout error when a handler exceeds the configured request timeout", async () => {
+    const sql = postgres(config.databaseUrl, { max: 1, idle_timeout: 1 });
+    const app = createApp({
+      config: {
+        ...config,
+        requestTimeoutMs: 5,
+      },
+      sql,
+      probe: async () => {
+        await Bun.sleep(25);
+        return 8;
+      },
+      sessions: makeSessionService(),
+      logger: silentLogger,
+    });
+
+    const response = await app.handle(
+      new Request("http://localhost/api/health"),
+    );
+    const payload = apiErrorPayloadSchema.parse(await response.json());
+
+    expect(response.status).toBe(504);
+    expect(payload.error.code).toBe("timeout");
 
     await sql.end({ timeout: 0 });
   });

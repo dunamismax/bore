@@ -126,7 +126,7 @@ tui/
 
 The rewrite lane now has a concrete runtime skeleton in repo:
 
-- `apps/api` boots an Elysia service on Bun with typed env parsing, boot-time SQL migration application, `/api/health`, `/api/readiness`, `/api/sessions`, `/api/sessions/:code`, `/api/sessions/:code/join`, and `/api/ops/summary`
+- `apps/api` boots an Elysia service on Bun with typed env parsing, boot-time SQL migration application, structured JSON request logs, per-IP rate limits on write paths, JSON request-size enforcement, request and idle timeout guards, plus `/api/health`, `/api/readiness`, `/api/sessions`, `/api/sessions/:code`, `/api/sessions/:code/join`, and `/api/ops/summary`
 - `apps/web` boots an Astro + Vue app with the first route structure for `/`, `/send`, `/receive/[code]`, and `/ops`
 - `packages/contracts` owns the shared Zod health, readiness, session, operator-summary, error, and coordination-envelope schemas used across the v2 lane
 - `db/migrations` plus the checked-in Bun migration runners establish PostgreSQL-backed session metadata, participant records, file metadata, and lifecycle event history
