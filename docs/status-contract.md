@@ -1,13 +1,14 @@
 # Relay Status Contract
 
-This document records the Go-owned JSON contract for the relay `GET /status` endpoint.
+This document records the Go-owned JSON contract for the relay `GET /status` endpoint used by the shipped v1 codebase.
 
-Phase 0 inventory for the frontend migration found two live consumers of this payload before the Astro cutover:
+Current known consumers of this payload in v1 are:
 
-- the legacy Python browser surface at `frontend/src/app/templates/partials/relay_status.html`
+- the Astro browser surface at `web/src/components/RelayStatusPanel.vue`
+- `tui/`
 - `cmd/bore-admin`
 
-That legacy Python frontend has since been removed. Phase 1 kept the same contract for the new browser surface at `web/src/components/RelayStatusPanel.vue`. Phase 2 added the OpenTUI operator surface in `tui/` as another consumer of the same Go-owned payload.
+The removed Python frontend also consumed this payload before the Astro cutover. This document is a v1 contract reference, not an automatic contract promise for the planned v2 rewrite described in `BUILD.md`.
 
 ## Contract shape
 

@@ -19,6 +19,8 @@ The primary terminal operator surface now lives in `tui/` as an OpenTUI console 
 
 **v1.0.1** -- current stable release with relay and browser-surface hardening. Current truth:
 
+Rewrite note: `BUILD.md` is now the execution manual for the planned v2 full rewrite onto Bun + TypeScript + Astro + Vue + Elysia + Zod + PostgreSQL + Docker Compose + Caddy. This README still describes the shipped v1 codebase that exists today.
+
 - the repo is one Go module rooted at `github.com/dunamismax/bore`
 - binaries live under `cmd/`: `bore`, `relay`, `bore-admin`, and `punchthrough`
 - shared Go packages live under `internal/`: `client`, `relay`, and `punchthrough`
@@ -79,7 +81,7 @@ Bore's relay path does not need a durable database today.
 - resumable transfer checkpoint state is persisted as JSON on the receiver's filesystem (not in a database).
 - transfer history and persisted operator history are not implemented yet.
 
-If Bore later earns local persistence for relay observations or operator history, start with a small relational SQLite store. If the browser surface ever grows into authenticated write-heavy workflows, keep it on SQLite with handwritten SQL migrations and queries.
+For the shipped v1 codepath, keep relay state in memory unless a maintenance need clearly earns more. The planned v2 rewrite in `BUILD.md` moves durable application metadata and operator history to PostgreSQL.
 
 ## Install
 

@@ -420,12 +420,7 @@ A small compatibility CLI that queries the relay `/status` endpoint. It is not a
 
 Bore's current architecture uses **filesystem-based resume state** on the receiver side and **no durable data layer** on the relay.
 
-If Bore later needs local durable state, the default path is:
-
-1. keep the data **relational**
-2. start with **SQLite**
-3. use handwritten SQL migrations and queries
-4. keep Go-side queries plain SQL first
+If Bore needs more durable state on the shipped v1 line, keep the data relational and add only what that maintenance lane clearly earns. The planned v2 rewrite in `BUILD.md` moves the next-generation app to PostgreSQL under the Bun + TypeScript + Elysia stack.
 
 ---
 
