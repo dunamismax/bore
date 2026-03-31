@@ -48,12 +48,14 @@ export const apiErrorIssueSchema = z.object({
   path: z.array(z.union([z.string(), z.number()])).optional(),
 });
 
+export const apiErrorSchema = z.object({
+  code: apiErrorCodeSchema,
+  message: z.string().min(1),
+  issues: z.array(apiErrorIssueSchema).optional(),
+});
+
 export const apiErrorPayloadSchema = z.object({
-  error: z.object({
-    code: apiErrorCodeSchema,
-    message: z.string().min(1),
-    issues: z.array(apiErrorIssueSchema).optional(),
-  }),
+  error: apiErrorSchema,
 });
 
 export const sessionCodeSchema = z
@@ -148,6 +150,44 @@ export const sessionDetailSchema = z.object({
   events: z.array(sessionEventSchema),
 });
 
+export const coordinationEnvelopeTypeSchema = z.enum([
+  "session_snapshot",
+  "session_event",
+  "keepalive",
+  "error",
+]);
+
+export const sessionSnapshotEnvelopeSchema = z.object({
+  type: z.literal("session_snapshot"),
+  session: sessionDetailSchema,
+});
+
+export const sessionEventEnvelopeSchema = z.object({
+  type: z.literal("session_event"),
+  sessionCode: sessionCodeSchema,
+  status: sessionStatusSchema,
+  event: sessionEventSchema,
+});
+
+export const coordinationKeepaliveEnvelopeSchema = z.object({
+  type: z.literal("keepalive"),
+  sessionCode: sessionCodeSchema,
+  timestamp: z.string().datetime(),
+});
+
+export const coordinationErrorEnvelopeSchema = z.object({
+  type: z.literal("error"),
+  sessionCode: sessionCodeSchema.optional(),
+  error: apiErrorSchema,
+});
+
+export const coordinationEnvelopeSchema = z.discriminatedUnion("type", [
+  sessionSnapshotEnvelopeSchema,
+  sessionEventEnvelopeSchema,
+  coordinationKeepaliveEnvelopeSchema,
+  coordinationErrorEnvelopeSchema,
+]);
+
 export const createSessionRequestSchema = z.object({
   file: transferFileSchema,
   senderDisplayName: z.string().trim().min(1).max(120).optional(),
@@ -197,6 +237,7 @@ export type ReadinessStatus = z.infer<typeof readinessStatusSchema>;
 export type ReadinessCheck = z.infer<typeof readinessCheckSchema>;
 export type HealthPayload = z.infer<typeof healthPayloadSchema>;
 export type ReadinessPayload = z.infer<typeof readinessPayloadSchema>;
+export type ApiError = z.infer<typeof apiErrorSchema>;
 export type ApiErrorPayload = z.infer<typeof apiErrorPayloadSchema>;
 export type ParticipantRole = z.infer<typeof participantRoleSchema>;
 export type ParticipantStatus = z.infer<typeof participantStatusSchema>;
@@ -206,6 +247,20 @@ export type SessionParticipant = z.infer<typeof sessionParticipantSchema>;
 export type SessionEventType = z.infer<typeof sessionEventTypeSchema>;
 export type SessionEvent = z.infer<typeof sessionEventSchema>;
 export type SessionDetail = z.infer<typeof sessionDetailSchema>;
+export type CoordinationEnvelopeType = z.infer<
+  typeof coordinationEnvelopeTypeSchema
+>;
+export type SessionSnapshotEnvelope = z.infer<
+  typeof sessionSnapshotEnvelopeSchema
+>;
+export type SessionEventEnvelope = z.infer<typeof sessionEventEnvelopeSchema>;
+export type CoordinationKeepaliveEnvelope = z.infer<
+  typeof coordinationKeepaliveEnvelopeSchema
+>;
+export type CoordinationErrorEnvelope = z.infer<
+  typeof coordinationErrorEnvelopeSchema
+>;
+export type CoordinationEnvelope = z.infer<typeof coordinationEnvelopeSchema>;
 export type CreateSessionRequest = z.infer<typeof createSessionRequestSchema>;
 export type JoinSessionRequest = z.infer<typeof joinSessionRequestSchema>;
 export type SessionRouteParams = z.infer<typeof sessionRouteParamsSchema>;

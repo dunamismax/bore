@@ -17,7 +17,7 @@ const envSchema = z.object({
         value.startsWith("postgres://") || value.startsWith("postgresql://"),
       "BORE_V2_DATABASE_URL must start with postgres:// or postgresql://",
     )
-    .default("postgres://bore:bore@localhost:5432/bore_v2"),
+    .default("postgres://bore:bore@localhost:15432/bore_v2"),
   BORE_V2_DATABASE_SSL: z
     .enum(["true", "false"])
     .default("false")

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   apiErrorPayloadSchema,
+  coordinationEnvelopeSchema,
   healthPayloadSchema,
   operatorSummaryPayloadSchema,
   readinessPayloadSchema,
@@ -71,6 +72,75 @@ describe("contracts", () => {
     });
 
     expect(payload.file.name).toBe("report.pdf");
+  });
+
+  test("parses a valid coordination snapshot envelope", () => {
+    const timestamp = new Date().toISOString();
+    const payload = coordinationEnvelopeSchema.parse({
+      type: "session_snapshot",
+      session: {
+        id: "4a218497-6214-49a1-b7bf-85bf52ec2fbe",
+        code: "ember-orbit-421",
+        status: "waiting_receiver",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        expiresAt: timestamp,
+        file: {
+          name: "report.pdf",
+          sizeBytes: 58213,
+        },
+        participants: [
+          {
+            role: "sender",
+            status: "joined",
+            joinedAt: timestamp,
+          },
+        ],
+        events: [],
+      },
+    });
+
+    expect(payload.type).toBe("session_snapshot");
+  });
+
+  test("parses a valid coordination event envelope", () => {
+    const timestamp = new Date().toISOString();
+    const payload = coordinationEnvelopeSchema.parse({
+      type: "session_event",
+      sessionCode: "ember-orbit-421",
+      status: "ready",
+      event: {
+        id: "df8ffbde-cf34-4f8d-a73d-c6c13fda245d",
+        type: "receiver_joined",
+        actorRole: "receiver",
+        timestamp,
+        payload: {
+          displayName: "Sawyer",
+        },
+      },
+    });
+
+    expect(payload.type).toBe("session_event");
+    if (payload.type !== "session_event") {
+      throw new Error("expected a session_event envelope");
+    }
+    expect(payload.event.type).toBe("receiver_joined");
+  });
+
+  test("rejects malformed coordination envelopes", () => {
+    expect(() =>
+      coordinationEnvelopeSchema.parse({
+        type: "session_event",
+        sessionCode: "not a rendezvous code",
+        status: "ready",
+        event: {
+          id: "df8ffbde-cf34-4f8d-a73d-c6c13fda245d",
+          type: "receiver_joined",
+          timestamp: new Date().toISOString(),
+          payload: {},
+        },
+      }),
+    ).toThrow();
   });
 
   test("parses a valid operator summary payload", () => {

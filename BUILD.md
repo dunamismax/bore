@@ -118,7 +118,7 @@ Bore is in an active rewrite program. `README.md` and `ARCHITECTURE.md` describe
 
 - [x] Add SQL migrations for transfer sessions, participants, file metadata, and event history.
 - [x] Implement session create, join, read, and operator summary endpoints.
-- [ ] Add typed realtime envelopes for coordination events.
+- [x] Add typed realtime envelopes for coordination events.
 - [ ] Add structured logs, rate limits, request-size limits, and timeouts.
 - [x] Keep all externally consumed payloads defined in shared Zod schemas.
 
@@ -133,7 +133,7 @@ Bore is in an active rewrite program. `README.md` and `ARCHITECTURE.md` describe
 - [x] API unit tests for handlers and validation failures.
 - [x] Integration tests against PostgreSQL in Docker Compose.
 - [x] Migration up and reset smoke checks.
-- [ ] Realtime contract tests for coordination message envelopes.
+- [x] Realtime contract tests for coordination message envelopes.
 
 ## Phase 3 - Build the web application foundation
 
