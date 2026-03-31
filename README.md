@@ -68,6 +68,8 @@ The rewrite is no longer doc-only. The repo now contains a verified Phase 3 web-
 - `apps/api` Elysia service with typed env parsing, boot-time SQL migration application, `/api/health`, `/api/readiness`, `/api/sessions`, `/api/sessions/:code`, `/api/sessions/:code/join`, and `/api/ops/summary`
 - `apps/web` Astro + Vue app with typed send, receive, and ops shells for `/`, `/send`, `/receive/[code]`, and `/ops`
 - a shared browser API client over `packages/contracts` so web fetches stay schema-validated instead of ad hoc JSON parsing
+- Bun unit coverage for the typed web client and composables, including client-side and API-surfaced validation states
+- Playwright browser smoke coverage across desktop and mobile widths for the v2 send, receive, and ops shells
 - `packages/contracts` with shared Zod schemas for health, readiness, session, operator-summary, error payloads, and typed coordination envelopes for the upcoming realtime lane
 - `db/migrations` plus checked-in Bun runners for `db:migrate` and `db:reset`
 - `infra/caddy/Caddyfile`, `docker-compose.yml`, and `.env.example` so the v2 lane runs as `caddy + api + postgres + web`
@@ -265,6 +267,12 @@ bun run verify
 docker compose up -d --build
 # or: BORE_V2_HTTP_PORT=18080 docker compose up -d --build
 # or: BORE_V2_POSTGRES_PORT=15432 docker compose up -d --build
+```
+
+Browser smoke coverage for the current v2 web shells:
+
+```bash
+bun run --cwd apps/web test:browser
 ```
 
 ### v2 database foundation

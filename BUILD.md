@@ -162,8 +162,8 @@ Bore is in an active rewrite program. `README.md` and `ARCHITECTURE.md` describe
 
 - [ ] Component and composable tests with Bun.
 - [x] `astro check` passes for the v2 web app.
-- [ ] Browser smoke coverage for create-session and join-session shells.
-- [ ] Responsive checks for mobile and desktop widths.
+- [x] Browser smoke coverage for create-session and join-session shells.
+- [x] Responsive checks for mobile and desktop widths.
 
 ## Phase 4 - Ship a relay-first secure transfer MVP
 

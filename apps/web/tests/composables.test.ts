@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type {
+  ApiErrorPayload,
   HealthPayload,
   OperatorSummaryPayload,
   ReadinessPayload,
@@ -9,7 +10,7 @@ import type {
 import { useCreateSessionForm } from "../src/composables/useCreateSessionForm";
 import { useJoinSession } from "../src/composables/useJoinSession";
 import { useOpsSummary } from "../src/composables/useOpsSummary";
-import type { BoreApiClient } from "../src/lib/api";
+import { ApiClientError, type BoreApiClient } from "../src/lib/api";
 
 const timestamp = "2026-03-31T14:00:00.000Z";
 
@@ -114,6 +115,18 @@ function makeOperatorSummary(): OperatorSummaryPayload {
   };
 }
 
+function makeApiErrorPayload(
+  issues: NonNullable<ApiErrorPayload["error"]["issues"]>,
+): ApiErrorPayload {
+  return {
+    error: {
+      code: "bad_request",
+      message: "request validation failed",
+      issues,
+    },
+  };
+}
+
 function makeClient(overrides: Partial<BoreApiClient> = {}): BoreApiClient {
   return {
     getHealth: async () => makeHealthPayload(),
@@ -157,6 +170,39 @@ describe("web composables", () => {
     expect(composable.createdSession.value?.code).toBe("ember-orbit-421");
   });
 
+  test("maps typed api validation issues back onto the create form", async () => {
+    const composable = useCreateSessionForm(
+      makeClient({
+        createSession: async () => {
+          throw new ApiClientError(
+            400,
+            "request validation failed",
+            makeApiErrorPayload([
+              {
+                code: "too_small",
+                message: "file name is required",
+                path: ["file", "name"],
+              },
+            ]),
+          );
+        },
+      }),
+    );
+
+    composable.form.fileName = "report.pdf";
+    composable.form.sizeBytes = "58213";
+    composable.form.mimeType = "application/pdf";
+    composable.form.expiresInMinutes = "15";
+
+    const result = await composable.submit();
+
+    expect(result).toBe(false);
+    expect(composable.submitError.value).toBe("request validation failed");
+    expect(composable.fieldErrors.value["file.name"]).toBe(
+      "file name is required",
+    );
+  });
+
   test("loads and joins a waiting session", async () => {
     const composable = useJoinSession("ember-orbit-421", makeClient());
 
@@ -173,6 +219,37 @@ describe("web composables", () => {
     expect(joined).toBe(true);
     expect(composable.session.value?.status).toBe("ready");
     expect(composable.canJoin.value).toBe(false);
+  });
+
+  test("maps typed api validation issues back onto the join form", async () => {
+    const composable = useJoinSession(
+      "ember-orbit-421",
+      makeClient({
+        joinSession: async () => {
+          throw new ApiClientError(
+            400,
+            "request validation failed",
+            makeApiErrorPayload([
+              {
+                code: "too_small",
+                message: "display name must be at least 2 characters",
+                path: ["displayName"],
+              },
+            ]),
+          );
+        },
+      }),
+    );
+
+    composable.form.displayName = "S";
+
+    const result = await composable.submitJoin();
+
+    expect(result).toBe(false);
+    expect(composable.joinError.value).toBe("request validation failed");
+    expect(composable.fieldErrors.value.displayName).toBe(
+      "display name must be at least 2 characters",
+    );
   });
 
   test("loads the operator summary through the typed client", async () => {
