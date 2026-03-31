@@ -85,6 +85,17 @@ jobs:
       - name: Build
         run: go build ./cmd/bore-admin
 
+  v2-workspace:
+    name: v2 workspace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Verify
+        run: bun run verify
+
   web:
     name: Web
     runs-on: ubuntu-latest

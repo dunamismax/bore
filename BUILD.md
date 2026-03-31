@@ -14,7 +14,7 @@ This file is the execution manual for Bore's full-stack rewrite.
 - Docker Compose
 - Caddy
 
-This is a planning document, not an implementation claim. No v2 rewrite code is assumed to exist until it lands.
+This is an active rewrite document. Phase 0 and Phase 1 now have real repo state under `apps/`, `packages/`, `infra/`, the root Bun workspace, and `docker-compose.yml`, but v2 is not the shipped product yet.
 
 ## Rewrite directive
 
@@ -204,6 +204,36 @@ These are hard constraints for the rewrite plan.
 - compatibility shims should be thin and temporary
 - new feature work should target v2 unless there is a release-blocking v1 maintenance issue
 
+## Rewrite progress snapshot
+
+- **Phase 0: done**. Repo docs now distinguish shipped v1 truth from planned v2 direction, and this file owns the rewrite plan.
+- **Phase 1: done**. The repo now has a root Bun workspace, `apps/api`, `apps/web`, `packages/contracts`, `infra/caddy`, `.env.example`, `docker-compose.yml`, and verified health/readiness plus Caddy routing.
+- **Phase 2+: pending**. Persistence, typed session APIs, transfer implementation, parity recovery, and cutover work are still ahead.
+
+## v2 launch feature matrix
+
+| Area | v2 launch stance | Notes |
+| --- | --- | --- |
+| Web-first send and receive flows | keep | Core product path for v2 |
+| Operator web surface | keep | Must move to v2 APIs, not Go `/status` |
+| End-to-end encryption | keep | Non-negotiable product requirement |
+| Short human rendezvous codes | keep | Security-sensitive join primitive |
+| Relay-first transfer path | keep | Explicit Phase 4 MVP direction |
+| PostgreSQL-backed metadata and event history | keep | Required v2 system of record |
+| Browser-capable direct transport parity | defer | Decide only after relay-first v2 is stable |
+| Resume semantics | defer | Recover after relay-first MVP, if earned |
+| `cmd/bore` as a primary product lane | drop | Keep only as legacy or compatibility if retained at all |
+| `cmd/relay` as the long-term backend owner | drop | Elysia replaces Go backend ownership in v2 |
+| `web/` Go-served browser surface as the primary UI | drop | Replaced by `apps/web` over time |
+| `tui/` as the primary operator surface | drop | Secondary compatibility lane only if still useful |
+
+## Transitional surface stance
+
+- `cmd/bore`: keep runnable during migration for legacy direct-transfer workflows, but do not let it drive v2 product design.
+- `cmd/relay`: keep runnable for shipped v1 operations only. It is not the v2 backend destination.
+- `cmd/bore-admin`: keep only as a terse compatibility shim while the web and operator APIs mature. Remove or freeze once v2 ops coverage is adequate.
+- `tui/`: keep as a secondary operator compatibility surface while the v2 web ops shell grows. Do not treat it as the primary operator destination.
+
 ## Proposed v2 persistence model
 
 Start with these tables and keep them boring:
@@ -229,6 +259,8 @@ Do not over-model before the relay-first MVP exists. Session state, participant 
 
 Purpose: remove ambiguity before code starts moving.
 
+Status: **done**. The repo docs now distinguish shipped v1 truth from the active v2 plan, and the feature and deprecation stance is explicit in this file.
+
 Deliverables:
 
 - this `BUILD.md` becomes the rewrite source of truth
@@ -251,6 +283,8 @@ Verification expectations:
 ### Phase 1: stand up the v2 workspace and runtime skeleton
 
 Purpose: create a real landing zone for the rewrite.
+
+Status: **done**. The root Bun workspace, `apps/api`, `apps/web`, `packages/contracts`, `infra/caddy`, `.env.example`, `docker-compose.yml`, and Caddy-routed health shell now exist in repo and verify locally.
 
 Deliverables:
 

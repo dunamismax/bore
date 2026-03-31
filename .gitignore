@@ -1,5 +1,6 @@
 # Local build caches and binaries
 target/
+/node_modules
 /bore
 /relay
 /bore-admin
@@ -8,12 +9,19 @@ target/
 /web/.astro
 /web/dist
 /tui/node_modules
+/apps/*/node_modules
+/apps/*/.astro
+/apps/*/dist
+/packages/*/node_modules
+/packages/*/dist
 *.test
 vendor/
 
 # Local agent/worktree artifacts
 .claude/
 .claire/
+.bun-cache/
+.tmp/
 
 # SQLite
 *.db
@@ -23,3 +31,6 @@ vendor/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local env
+.env

@@ -4,5 +4,15 @@ bore
 relay
 bore-admin
 punchthrough
+node_modules
+apps/*/node_modules
+apps/*/.astro
+apps/*/dist
+packages/*/node_modules
+packages/*/dist
 web/node_modules
 web/.vite
+tui/node_modules
+.tmp
+.bun-cache
+.env

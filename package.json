@@ -1,0 +1,16 @@
+{
+  "name": "bore-v2-workspace",
+  "private": true,
+  "packageManager": "bun@1.3.10",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "lint": "bun scripts/workspace-task.mjs lint",
+    "check": "bun scripts/workspace-task.mjs check",
+    "test": "bun scripts/workspace-task.mjs test",
+    "build": "bun scripts/workspace-task.mjs build",
+    "verify": "bun scripts/workspace-task.mjs verify"
+  }
+}

@@ -1,3 +1,4 @@
+// Package webui serves the shipped v1 Astro browser surface from the Go relay.
 package webui
 
 import (

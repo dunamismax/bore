@@ -1,0 +1,58 @@
+services:
+  caddy:
+    image: caddy:2.10.2-alpine
+    depends_on:
+      api:
+        condition: service_started
+      web:
+        condition: service_started
+    ports:
+      - "${BORE_V2_HTTP_PORT:-8080}:80"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+
+  postgres:
+    image: postgres:17.5-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bore_v2}
+      POSTGRES_USER: ${POSTGRES_USER:-bore}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bore}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-bore} -d ${POSTGRES_DB:-bore_v2}
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      BORE_V2_API_HOST: ${BORE_V2_API_HOST:-0.0.0.0}
+      BORE_V2_API_PORT: ${BORE_V2_API_PORT:-3000}
+      BORE_V2_APP_VERSION: ${BORE_V2_APP_VERSION:-0.0.0-phase1}
+      BORE_V2_PUBLIC_ORIGIN: ${BORE_V2_PUBLIC_ORIGIN:-http://localhost:8080}
+      BORE_V2_DATABASE_URL: ${BORE_V2_DATABASE_URL:-postgres://bore:bore@postgres:5432/bore_v2}
+      BORE_V2_DATABASE_SSL: ${BORE_V2_DATABASE_SSL:-false}
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      HOST: ${BORE_V2_WEB_HOST:-0.0.0.0}
+      PORT: ${BORE_V2_WEB_PORT:-4321}
+
+volumes:
+  postgres-data:

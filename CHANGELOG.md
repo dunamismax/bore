@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Landed the Bore v2 Phase 1 workspace skeleton at repo root with `apps/api`, `apps/web`, `packages/contracts`, `infra/caddy`, `.env.example`, `docker-compose.yml`, and shared Bun verification scripts.
+- Added the first typed v2 health and readiness contracts plus a Caddy-routed local Compose stack for the new web and API lane.
+
+### Documentation
+
+- Updated README and architecture docs so repo truth now distinguishes shipped Go-first v1 from the active v2 workspace scaffold.
+- Expanded `BUILD.md` with rewrite progress, explicit feature decisions, and transitional deprecation stance for legacy surfaces.
+
 ## [1.0.1] - 2026-03-29
 
 Patch release focused on relay input validation, browser-surface hardening, and docs cleanup after v1.0.0.

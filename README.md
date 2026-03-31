@@ -19,13 +19,14 @@ The primary terminal operator surface now lives in `tui/` as an OpenTUI console 
 
 **v1.0.1** -- current stable release with relay and browser-surface hardening. Current truth:
 
-Rewrite note: `BUILD.md` is now the execution manual for the planned v2 full rewrite onto Bun + TypeScript + Astro + Vue + Elysia + Zod + PostgreSQL + Docker Compose + Caddy. This README still describes the shipped v1 codebase that exists today.
+Rewrite note: `BUILD.md` is the active execution manual for the v2 full rewrite onto Bun + TypeScript + Astro + Vue + Elysia + Zod + PostgreSQL + Docker Compose + Caddy. This README still describes the shipped v1 codebase that exists today, while the repo now also contains a real Phase 1 v2 workspace under `apps/`, `packages/`, and `infra/`.
 
 - the repo is one Go module rooted at `github.com/dunamismax/bore`
 - binaries live under `cmd/`: `bore`, `relay`, `bore-admin`, and `punchthrough`
 - shared Go packages live under `internal/`: `client`, `relay`, and `punchthrough`
 - the active browser surface lives in `web/` (Astro + Vue on Bun), served same-origin by `cmd/relay`
 - the active terminal operator surface lives in `tui/` (OpenTUI on Bun), pointed at the relay's Go-owned `/status` endpoint
+- the v2 rewrite landing zone now exists at repo root as a Bun workspace with `apps/api`, `apps/web`, `packages/contracts`, `infra/caddy`, `docker-compose.yml`, and `.env.example`
 - **direct P2P is the default transfer path** -- STUN discovery, signaling, hole-punching
 - **QUIC-based direct transport** with production-quality congestion control (default)
 - ICE-like multi-candidate gathering (host, server-reflexive candidates)
@@ -59,6 +60,18 @@ Rewrite note: `BUILD.md` is now the execution manual for the planned v2 full rew
 - deployment packaging (Dockerfile, systemd service unit)
 - standalone `punchthrough` CLI for NAT probing
 
+## What Exists For v2 Today
+
+The rewrite is no longer doc-only. The repo now contains a verified Phase 1 landing zone for the next-generation stack:
+
+- root Bun workspace with shared `lint`, `check`, `test`, `build`, and `verify` commands
+- `apps/api` Elysia service with typed env parsing plus `/api/health` and `/api/readiness`
+- `apps/web` Astro + Vue app with the early route structure for `/`, `/send`, `/receive/[code]`, and `/ops`
+- `packages/contracts` with shared Zod schemas for health and readiness payloads
+- `infra/caddy/Caddyfile`, `docker-compose.yml`, and `.env.example` so the v2 lane runs as `caddy + api + postgres + web`
+
+This is still a build-phase scaffold, not a cutover claim. The shipped product remains the Go-first v1 described above.
+
 ## Components
 
 | Component | Location | Status | Purpose |
@@ -82,6 +95,31 @@ Bore's relay path does not need a durable database today.
 - transfer history and persisted operator history are not implemented yet.
 
 For the shipped v1 codepath, keep relay state in memory unless a maintenance need clearly earns more. The planned v2 rewrite in `BUILD.md` moves durable application metadata and operator history to PostgreSQL.
+
+## v2 workspace quick start
+
+The rewrite lane now boots independently from the shipped Go runtime.
+
+```bash
+bun install
+bun run verify
+docker compose up -d --build
+```
+
+If port `8080` is already in use locally, override it for the v2 stack run:
+
+```bash
+BORE_V2_HTTP_PORT=18080 docker compose up -d --build
+```
+
+Once the stack is up:
+
+- v2 web shell through Caddy: <http://127.0.0.1:8080/>
+- v2 ops shell through Caddy: <http://127.0.0.1:8080/ops>
+- v2 health endpoint through Caddy: <http://127.0.0.1:8080/api/health>
+- alternate port example when overriding locally: <http://127.0.0.1:18080/api/health>
+
+The v2 lane is intentionally separate from the shipped Go relay runtime. It does not replace `cmd/relay`, `web/`, or `tui/` yet.
 
 ## Install
 
@@ -207,6 +245,19 @@ bun run check
 bun test
 ```
 
+### v2 workspace
+
+```bash
+bun install
+bun run lint
+bun run check
+bun run test
+bun run build
+bun run verify
+docker compose up -d --build
+# or: BORE_V2_HTTP_PORT=18080 docker compose up -d --build
+```
+
 ### Operator TUI
 
 ```bash
@@ -254,6 +305,9 @@ go build ./cmd/bore-admin
 │   ├── bore-admin/
 │   ├── punchthrough/
 │   └── relay/
+├── apps/
+│   ├── api/
+│   └── web/
 ├── internal/
 │   ├── client/
 │   │   ├── code/
@@ -271,6 +325,13 @@ go build ./cmd/bore-admin
 │   │   ├── transport/
 │   │   └── webui/
 │   └── roomid/
+├── packages/
+│   └── contracts/
+├── infra/
+│   └── caddy/
+├── docker-compose.yml
+├── package.json
+├── bun.lock
 ├── web/
 │   ├── src/
 │   │   ├── components/
@@ -295,6 +356,7 @@ go build ./cmd/bore-admin
 
 - `README.md` - current product status, quick start, and verification commands
 - `ARCHITECTURE.md` - system layout, transport layering, and design notes
+- `BUILD.md` - active v2 rewrite plan and phase tracker
 - `SECURITY.md` - threat model, implemented guardrails, and current limits
 - `docs/status-contract.md` - Go-owned `/status` contract consumed by the browser surface, `tui/`, and `bore-admin`
 - `CHANGELOG.md` - release history

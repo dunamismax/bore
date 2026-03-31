@@ -1,0 +1,51 @@
+---
+import "../styles/global.css";
+import { primaryRoutes } from "../lib/routes";
+
+type Props = {
+  title: string;
+  description: string;
+};
+
+const { title, description } = Astro.props as Props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="site-header">
+        <div class="eyebrow">Bore v2 build phase</div>
+        <div class="title-row">
+          <div>
+            <h1>Bore</h1>
+            <p class="lede">
+              The shipped product is still the Go-first v1. This web lane is the real
+              Phase 1 workspace for the v2 rewrite.
+            </p>
+          </div>
+          <nav aria-label="Primary">
+            <ul class="nav-list">
+              {
+                primaryRoutes.map((route) => (
+                  <li>
+                    <a href={route.href}>{route.label}</a>
+                  </li>
+                ))
+              }
+            </ul>
+          </nav>
+        </div>
+      </header>
+      <main class="page-content">
+        <slot />
+      </main>
+    </div>
+  </body>
+</html>

@@ -1,3 +1,4 @@
+// Package status defines the Go-owned relay health and status payloads consumed by shipped v1 surfaces.
 package status
 
 const (

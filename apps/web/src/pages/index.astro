@@ -1,0 +1,58 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+---
+
+<AppLayout
+  title="Bore v2 workspace"
+  description="Phase 1 v2 workspace skeleton for Bore."
+>
+  <section class="hero">
+    <div>
+      <p class="eyebrow">Phase 1 milestone</p>
+      <h2>One root workspace, one API lane, one web lane.</h2>
+      <p>
+        This repo still ships the Go relay, CLI, legacy `web/`, and `tui/` as v1.
+        The new lane under <code>apps/</code> and <code>packages/</code> is a real
+        runtime skeleton for v2, not a completion claim.
+      </p>
+    </div>
+    <div class="panel">
+      <h3>What exists now</h3>
+      <ul class="stack-list">
+        <li>Root Bun workspace for the v2 rewrite</li>
+        <li>Elysia API with typed config, health, and readiness</li>
+        <li>Astro + Vue app routed through Caddy</li>
+        <li>Shared Zod contracts for runtime status payloads</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="panel-grid">
+    <article class="panel">
+      <h3>Send</h3>
+      <p>
+        The send flow route exists now so the web app can grow around a stable
+        product path instead of a placeholder home page only.
+      </p>
+      <a class="button" href="/send">Open send shell</a>
+    </article>
+
+    <article class="panel">
+      <h3>Receive</h3>
+      <p>
+        Dynamic receive routes are live under <code>/receive/[code]</code>. They are
+        placeholders today, but the route shape is already part of the real app.
+      </p>
+      <a class="button" href="/receive/demo-code">Open receive shell</a>
+    </article>
+
+    <article class="panel">
+      <h3>Ops</h3>
+      <p>
+        The ops route is the first v2 operator surface. Right now it focuses on the
+        new API stack health instead of v1 relay state.
+      </p>
+      <a class="button" href="/ops">Open ops shell</a>
+    </article>
+  </section>
+</AppLayout>
