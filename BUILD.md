@@ -37,7 +37,7 @@ Bore is in an active rewrite program. `README.md` and `ARCHITECTURE.md` describe
 - [x] Phase 0 - Freeze the rewrite charter.
 - [x] Phase 1 - Stand up the v2 workspace and runtime skeleton.
 - [x] Phase 2 - Build backend foundation in Elysia.
-- [ ] Phase 3 - Build the web application foundation.
+- [x] Phase 3 - Build the web application foundation.
 - [ ] Phase 4 - Ship a relay-first secure transfer MVP.
 - [ ] Phase 5 - Recover the parity features that still matter.
 - [ ] Phase 6 - Decide direct transport and fallback strategy.
@@ -160,7 +160,7 @@ Bore is in an active rewrite program. `README.md` and `ARCHITECTURE.md` describe
 
 ### Verification
 
-- [ ] Component and composable tests with Bun.
+- [x] Component and composable tests with Bun.
 - [x] `astro check` passes for the v2 web app.
 - [x] Browser smoke coverage for create-session and join-session shells.
 - [x] Responsive checks for mobile and desktop widths.
