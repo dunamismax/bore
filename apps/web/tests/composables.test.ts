@@ -93,6 +93,7 @@ function makeOperatorSummary(): OperatorSummaryPayload {
       total: 1,
       waitingReceiver: 1,
       ready: 0,
+      transferring: 0,
       completed: 0,
       failed: 0,
       expired: 0,

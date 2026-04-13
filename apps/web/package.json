@@ -16,6 +16,7 @@
     "@astrojs/node": "9.5.5",
     "@astrojs/vue": "5.1.4",
     "@bore/contracts": "workspace:*",
+    "@bore/crypto": "workspace:*",
     "astro": "5.18.1",
     "vue": "3.5.31"
   },

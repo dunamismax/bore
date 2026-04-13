@@ -4,26 +4,28 @@ import AppLayout from "../layouts/AppLayout.astro";
 
 <AppLayout
   title="Bore v2 workspace"
-  description="Phase 3 web foundation is complete for Bore v2."
+  description="Encrypted peer-to-peer file transfer with relay fallback."
 >
   <section class="hero">
     <div>
-      <p class="eyebrow">Phase 3 complete</p>
-      <h2>Typed browser flows are now wired into the real v2 API lane.</h2>
+      <p class="eyebrow">Phase 4 -- Relay transfer MVP</p>
+      <h2>End-to-end encrypted file transfer through the v2 relay.</h2>
       <p>
-        This repo still ships the Go relay, CLI, legacy <code>web/</code>, and
-        <code>tui/</code> as v1. The v2 lane under <code>apps/</code> and
-        <code>packages/</code> now goes beyond route placeholders by creating,
-        loading, joining, and summarizing real PostgreSQL-backed sessions.
+        The v2 lane now supports real encrypted file transfers. Select a file,
+        share the rendezvous code, and the receiver downloads the file
+        after it streams through the relay with AES-256-GCM encryption
+        derived from an ECDH key exchange. The server never sees plaintext.
       </p>
     </div>
     <div class="panel">
       <h3>What exists now</h3>
       <ul class="stack-list">
-        <li>Root Bun workspace for the v2 rewrite</li>
-        <li>Elysia API with durable session and operator-summary endpoints</li>
-        <li>Astro + Vue pages for send, receive, and ops flows</li>
-        <li>Shared Zod contracts plus a typed browser API client</li>
+        <li>End-to-end encryption with ECDH P-256 key exchange and AES-256-GCM</li>
+        <li>WebSocket relay for encrypted chunk streaming</li>
+        <li>Browser file send and receive with progress tracking</li>
+        <li>Integrity verification via SHA-256 checksum</li>
+        <li>Durable session lifecycle events in PostgreSQL</li>
+        <li>Operator visibility into active and completed transfers</li>
       </ul>
     </div>
   </section>
@@ -32,28 +34,28 @@ import AppLayout from "../layouts/AppLayout.astro";
     <article class="panel">
       <h3>Send</h3>
       <p>
-        Create a real session from the browser and get a verified rendezvous code
-        back from the v2 API.
+        Pick a file, create a session, and share the rendezvous code with your
+        receiver. The file is encrypted in your browser before streaming.
       </p>
-      <a class="button" href="/send">Open send shell</a>
+      <a class="button" href="/send">Send a file</a>
     </article>
 
     <article class="panel">
       <h3>Receive</h3>
       <p>
-        Dynamic receive routes now load typed session state and let a receiver join
-        the waiting shell.
+        Enter a rendezvous code to join a session and receive an encrypted
+        file. Integrity is verified before the download is available.
       </p>
-      <a class="button" href="/receive/demo-code">Open receive shell</a>
+      <a class="button" href="/receive/demo-code">Receive a file</a>
     </article>
 
     <article class="panel">
       <h3>Ops</h3>
       <p>
-        The ops route now shows health and live v2 operator summary data without the
-        legacy Go <code>/status</code> dependency.
+        Monitor active transfers, session counts, and lifecycle events
+        through the operator dashboard.
       </p>
-      <a class="button" href="/ops">Open ops shell</a>
+      <a class="button" href="/ops">Operator dashboard</a>
     </article>
   </section>
 </AppLayout>

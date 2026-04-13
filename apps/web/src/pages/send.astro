@@ -1,11 +1,11 @@
 ---
-import CreateSessionForm from "../components/CreateSessionForm.vue";
+import SendTransferPanel from "../components/SendTransferPanel.vue";
 import AppLayout from "../layouts/AppLayout.astro";
 ---
 
 <AppLayout
   title="Send | Bore v2"
-  description="Create a Bore v2 transfer session from the browser."
+  description="Send an encrypted file through the Bore v2 relay."
 >
-  <CreateSessionForm client:load />
+  <SendTransferPanel client:load />
 </AppLayout>

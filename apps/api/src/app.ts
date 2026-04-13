@@ -4,6 +4,7 @@ import {
   healthPayloadSchema,
   joinSessionRequestSchema,
   operatorSummaryPayloadSchema,
+  type ParticipantRole,
   type ReadinessPayload,
   type ReadinessStatus,
   readinessPayloadSchema,
@@ -19,6 +20,7 @@ import type { AppConfig } from "./config";
 import { probeDatabase } from "./db";
 import { createJsonLogger, type Logger } from "./logger";
 import { InMemoryRateLimiter } from "./rate-limit";
+import { createRelay, type RelayRoom } from "./relay";
 import {
   createDatabaseSessionService,
   SessionConflictError,
@@ -34,6 +36,7 @@ type AppDependencies = {
   sessions?: SessionService;
   logger?: Logger;
   rateLimiter?: InMemoryRateLimiter;
+  relay?: RelayRoom;
 };
 
 type RequestContext = {
@@ -242,6 +245,7 @@ export function createApp({
     maxRequests: config.rateLimitMaxRequests,
     windowMs: config.rateLimitWindowMs,
   }),
+  relay = createRelay(sessions, logger),
 }: AppDependencies) {
   const requestContexts = new WeakMap<Request, RequestContext>();
 
@@ -498,5 +502,48 @@ export function createApp({
       );
 
       return operatorSummaryPayloadSchema.parse(payload);
+    })
+    .ws("/api/sessions/:code/ws", {
+      params: sessionRouteParamsSchema,
+      async open(ws) {
+        const code = (ws.data as { params: { code: string } }).params.code;
+        const url = new URL(
+          ws.data.request?.url ?? `http://localhost/api/sessions/${code}/ws`,
+        );
+        const role = url.searchParams.get("role") as ParticipantRole | null;
+
+        if (role !== "sender" && role !== "receiver") {
+          ws.close(4400, "role query parameter must be sender or receiver");
+          return;
+        }
+
+        const session = await sessions.getSession(code);
+
+        if (!session) {
+          ws.close(4404, "session not found");
+          return;
+        }
+
+        const validStates = ["ready", "transferring"];
+
+        if (!validStates.includes(session.status)) {
+          ws.close(4409, `session is in state ${session.status}`);
+          return;
+        }
+
+        ws.data = {
+          ...ws.data,
+          sessionCode: code,
+          role,
+        } as typeof ws.data;
+
+        relay.handleOpen(ws as never);
+      },
+      message(ws, message) {
+        relay.handleMessage(ws as never, message as string | ArrayBuffer);
+      },
+      close(ws) {
+        relay.handleClose(ws as never);
+      },
     });
 }

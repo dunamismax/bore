@@ -104,6 +104,16 @@ function makeSessionService(): SessionService {
 
       return makeSessionDetail();
     },
+    async startTransfer() {
+      return makeSessionDetail("transferring" as SessionDetail["status"]);
+    },
+    async completeTransfer() {
+      return makeSessionDetail("completed");
+    },
+    async failTransfer() {
+      return makeSessionDetail("failed");
+    },
+    async recordTransferProgress() {},
     async getOperatorSummary() {
       return operatorSummaryPayloadSchema.parse({
         generatedAt: timestamp,
@@ -111,6 +121,7 @@ function makeSessionService(): SessionService {
           total: 1,
           waitingReceiver: 1,
           ready: 0,
+          transferring: 0,
           completed: 0,
           failed: 0,
           expired: 0,

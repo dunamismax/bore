@@ -77,6 +77,7 @@ export const participantStatusSchema = z.enum(["pending", "joined"]);
 export const sessionStatusSchema = z.enum([
   "waiting_receiver",
   "ready",
+  "transferring",
   "completed",
   "failed",
   "expired",
@@ -131,6 +132,10 @@ export const sessionEventTypeSchema = z.enum([
   "session_created",
   "file_registered",
   "receiver_joined",
+  "transfer_started",
+  "transfer_progress",
+  "transfer_completed",
+  "transfer_failed",
 ]);
 
 export const sessionEventSchema = z.object({
@@ -191,6 +196,50 @@ export const coordinationEnvelopeSchema = z.discriminatedUnion("type", [
   coordinationErrorEnvelopeSchema,
 ]);
 
+// ---------------------------------------------------------------------------
+// WebSocket transfer control messages
+// ---------------------------------------------------------------------------
+
+export const wsKeyExchangeSchema = z.object({
+  type: z.literal("key_exchange"),
+  publicKey: z.string().min(1),
+});
+
+export const wsTransferStartSchema = z.object({
+  type: z.literal("transfer_start"),
+  totalChunks: z.number().int().positive(),
+  chunkSize: z.number().int().positive(),
+});
+
+export const wsChunkAckSchema = z.object({
+  type: z.literal("chunk_ack"),
+  chunkIndex: z.number().int().nonnegative(),
+});
+
+export const wsTransferCompleteSchema = z.object({
+  type: z.literal("transfer_complete"),
+  checksumSha256: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/i, "must be a 64-character hex SHA-256 digest"),
+});
+
+export const wsTransferErrorSchema = z.object({
+  type: z.literal("transfer_error"),
+  message: z.string().min(1),
+});
+
+export const wsControlMessageSchema = z.discriminatedUnion("type", [
+  wsKeyExchangeSchema,
+  wsTransferStartSchema,
+  wsChunkAckSchema,
+  wsTransferCompleteSchema,
+  wsTransferErrorSchema,
+]);
+
+// ---------------------------------------------------------------------------
+// Request and response schemas
+// ---------------------------------------------------------------------------
+
 export const createSessionRequestSchema = z.object({
   file: transferFileSchema,
   senderDisplayName: z.string().trim().min(1).max(120).optional(),
@@ -223,6 +272,7 @@ export const operatorSessionCountsSchema = z.object({
   total: z.number().int().nonnegative(),
   waitingReceiver: z.number().int().nonnegative(),
   ready: z.number().int().nonnegative(),
+  transferring: z.number().int().nonnegative(),
   completed: z.number().int().nonnegative(),
   failed: z.number().int().nonnegative(),
   expired: z.number().int().nonnegative(),
@@ -274,3 +324,9 @@ export type OperatorSessionCounts = z.infer<typeof operatorSessionCountsSchema>;
 export type OperatorSummaryPayload = z.infer<
   typeof operatorSummaryPayloadSchema
 >;
+export type WsKeyExchange = z.infer<typeof wsKeyExchangeSchema>;
+export type WsTransferStart = z.infer<typeof wsTransferStartSchema>;
+export type WsChunkAck = z.infer<typeof wsChunkAckSchema>;
+export type WsTransferComplete = z.infer<typeof wsTransferCompleteSchema>;
+export type WsTransferError = z.infer<typeof wsTransferErrorSchema>;
+export type WsControlMessage = z.infer<typeof wsControlMessageSchema>;

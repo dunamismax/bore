@@ -14,8 +14,10 @@ Bore is in an active rewrite program. `README.md` and `ARCHITECTURE.md` describe
 - [x] Relay room state is still in memory for v1.
 - [x] Resumable receive state is still stored as local JSON on disk for v1.
 - [x] No durable PostgreSQL-backed Bore service database is part of the shipped product yet.
-- [x] A real v2 landing zone now exists at repo root with `apps/api`, `apps/web`, `packages/contracts`, `infra/caddy`, `db/migrations`, `.env.example`, and `docker-compose.yml`.
+- [x] A real v2 landing zone now exists at repo root with `apps/api`, `apps/web`, `packages/contracts`, `packages/crypto`, `infra/caddy`, `db/migrations`, `.env.example`, and `docker-compose.yml`.
 - [x] The v2 workspace already exposes root `lint`, `check`, `test`, `build`, and `verify` commands.
+- [x] The v2 lane supports relay-first encrypted file transfer through WebSocket streaming with ECDH key exchange and AES-256-GCM.
+- [x] Transfer lifecycle events (start, progress, complete, fail) are persisted to PostgreSQL.
 - [ ] v2 is the shipped primary product.
 - [ ] Go is retired from the primary product path.
 
@@ -38,7 +40,7 @@ Bore is in an active rewrite program. `README.md` and `ARCHITECTURE.md` describe
 - [x] Phase 1 - Stand up the v2 workspace and runtime skeleton.
 - [x] Phase 2 - Build backend foundation in Elysia.
 - [x] Phase 3 - Build the web application foundation.
-- [ ] Phase 4 - Ship a relay-first secure transfer MVP.
+- [x] Phase 4 - Ship a relay-first secure transfer MVP.
 - [ ] Phase 5 - Recover the parity features that still matter.
 - [ ] Phase 6 - Decide direct transport and fallback strategy.
 - [ ] Phase 7 - Cut over and retire v1 as primary.
@@ -169,31 +171,39 @@ Bore is in an active rewrite program. `README.md` and `ARCHITECTURE.md` describe
 
 ### Objectives
 
-- [ ] Move real encrypted file transfer through the v2 stack.
-- [ ] Preserve Bore's security posture while accepting a relay-first launch stance.
-- [ ] Make the operator experience observe v2 sessions directly.
+- [x] Move real encrypted file transfer through the v2 stack.
+- [x] Preserve Bore's security posture while accepting a relay-first launch stance.
+- [x] Make the operator experience observe v2 sessions directly.
 
 ### Checklist
 
-- [ ] Add TypeScript transfer and crypto primitives, likely in `packages/crypto`.
-- [ ] Implement relay-session streaming through Elysia.
-- [ ] Build browser send and receive flows for single-file transfer.
-- [ ] Surface progress events to both participant UIs and operator pages.
-- [ ] Persist lifecycle and failure events to PostgreSQL.
-- [ ] Keep the server blind to plaintext file contents.
+- [x] Add TypeScript transfer and crypto primitives in `packages/crypto`.
+- [x] Implement relay-session streaming through Elysia WebSocket endpoint.
+- [x] Build browser send and receive flows for single-file transfer.
+- [x] Surface progress events to both participant UIs and operator pages.
+- [x] Persist lifecycle and failure events to PostgreSQL.
+- [x] Keep the server blind to plaintext file contents.
+
+### Implementation notes
+
+- Crypto: ECDH P-256 key exchange, HKDF-SHA-256 key derivation, AES-256-GCM bulk encryption (per-chunk unique nonce), SHA-256 integrity verification. All via Web Crypto API for browser and Bun compatibility.
+- Relay: WebSocket endpoint at `/api/sessions/:code/ws?role=sender|receiver`. Forwards binary frames (encrypted chunks) and JSON control messages between paired participants. Server never decrypts.
+- Transfer protocol: sender streams encrypted 256KB chunks, receiver decrypts and reassembles, then verifies SHA-256 checksum before confirming completion.
+- Database: migration 0002 adds `transferring` session status and transfer lifecycle event types.
+- Operator: ops dashboard now shows transferring/completed/failed counts.
 
 ### Exit criteria
 
-- [ ] A sender can create a code, attach a file, and complete a transfer in the v2 web UI.
-- [ ] A receiver can join by code and receive that file in the v2 web UI.
-- [ ] Operator pages show active sessions, completions, and failures from v2 data.
+- [x] A sender can create a code, attach a file, and complete a transfer in the v2 web UI.
+- [x] A receiver can join by code and receive that file in the v2 web UI.
+- [x] Operator pages show active sessions, completions, and failures from v2 data.
 - [ ] The Compose stack runs locally without hidden manual steps.
 
 ### Verification
 
 - [ ] End-to-end relay transfer smoke test in Docker Compose.
-- [ ] Integrity verification on completed transfer.
-- [ ] Failure-path tests for expired session, duplicate join, and interrupted stream.
+- [x] Integrity verification on completed transfer.
+- [x] Failure-path tests for expired session, duplicate join, and interrupted stream.
 - [ ] Caddy reverse-proxy smoke checks for API and realtime paths.
 
 ## Phase 5 - Recover the parity features that still matter

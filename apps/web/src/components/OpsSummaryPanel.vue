@@ -58,6 +58,18 @@ onMounted(() => {
           <strong>{{ summary.counts.ready }}</strong>
         </article>
         <article class="metric">
+          <span class="metric-label">Transferring</span>
+          <strong>{{ summary.counts.transferring }}</strong>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Completed</span>
+          <strong>{{ summary.counts.completed }}</strong>
+        </article>
+        <article class="metric">
+          <span class="metric-label">Failed</span>
+          <strong>{{ summary.counts.failed }}</strong>
+        </article>
+        <article class="metric">
           <span class="metric-label">Generated</span>
           <strong>{{ formatTimestamp(summary.generatedAt) }}</strong>
         </article>

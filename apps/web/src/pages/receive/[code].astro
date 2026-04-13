@@ -1,5 +1,5 @@
 ---
-import JoinSessionPanel from "../../components/JoinSessionPanel.vue";
+import ReceiveTransferPanel from "../../components/ReceiveTransferPanel.vue";
 import AppLayout from "../../layouts/AppLayout.astro";
 
 export const prerender = false;
@@ -9,7 +9,7 @@ const code = Astro.params.code ?? "unknown";
 
 <AppLayout
   title={`Receive ${code} | Bore v2`}
-  description="Load and join a Bore v2 transfer session from the browser."
+  description="Receive an encrypted file through the Bore v2 relay."
 >
-  <JoinSessionPanel client:load code={code} />
+  <ReceiveTransferPanel client:load code={code} />
 </AppLayout>

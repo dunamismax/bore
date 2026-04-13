@@ -129,6 +129,17 @@ export type SessionService = {
   joinSession(code: string, input: JoinSessionRequest): Promise<SessionDetail>;
   getSession(code: string): Promise<SessionDetail | null>;
   getOperatorSummary(): Promise<OperatorSummaryPayload>;
+  startTransfer(code: string): Promise<SessionDetail>;
+  completeTransfer(
+    code: string,
+    checksumSha256: string,
+  ): Promise<SessionDetail>;
+  failTransfer(code: string, reason: string): Promise<SessionDetail>;
+  recordTransferProgress(
+    code: string,
+    bytesSent: number,
+    totalBytes: number,
+  ): Promise<void>;
 };
 
 function generateSessionCode() {
@@ -178,15 +189,7 @@ async function loadSessionDetailByCode(
       select id, event_type, actor_role, created_at, payload
       from session_events
       where session_id = ${sessionRow.id}
-      order by
-        created_at asc,
-        case event_type
-          when 'session_created' then 0
-          when 'file_registered' then 1
-          when 'receiver_joined' then 2
-          else 99
-        end asc,
-        id asc
+      order by created_at asc, id asc
     `,
   ]);
 
@@ -458,6 +461,7 @@ export function createDatabaseSessionService(sql: Sql): SessionService {
             total: number;
             waiting_receiver: number;
             ready: number;
+            transferring: number;
             completed: number;
             failed: number;
             expired: number;
@@ -468,6 +472,7 @@ export function createDatabaseSessionService(sql: Sql): SessionService {
             count(*)::int as total,
             count(*) filter (where status = 'waiting_receiver')::int as waiting_receiver,
             count(*) filter (where status = 'ready')::int as ready,
+            count(*) filter (where status = 'transferring')::int as transferring,
             count(*) filter (where status = 'completed')::int as completed,
             count(*) filter (where status = 'failed')::int as failed,
             count(*) filter (where status = 'expired')::int as expired,
@@ -525,6 +530,7 @@ export function createDatabaseSessionService(sql: Sql): SessionService {
         total: 0,
         waiting_receiver: 0,
         ready: 0,
+        transferring: 0,
         completed: 0,
         failed: 0,
         expired: 0,
@@ -537,6 +543,7 @@ export function createDatabaseSessionService(sql: Sql): SessionService {
           total: counts.total,
           waitingReceiver: counts.waiting_receiver,
           ready: counts.ready,
+          transferring: counts.transferring,
           completed: counts.completed,
           failed: counts.failed,
           expired: counts.expired,
@@ -560,6 +567,171 @@ export function createDatabaseSessionService(sql: Sql): SessionService {
           lastEventType: row.last_event_type ?? undefined,
         })),
       });
+    },
+
+    async startTransfer(code) {
+      return sql.begin(async (tx) => {
+        const sessionRows = await tx<SessionRow[]>`
+          select id, code, status, created_at, updated_at, expires_at
+          from transfer_sessions
+          where code = ${code}
+          for update
+        `;
+
+        const sessionRow = sessionRows[0];
+
+        if (!sessionRow) {
+          throw new SessionNotFoundError(code);
+        }
+
+        if (sessionRow.status !== "ready") {
+          throw new SessionConflictError(
+            `transfer cannot start from state ${sessionRow.status}`,
+          );
+        }
+
+        await tx`
+          update transfer_sessions
+          set status = 'transferring', updated_at = now()
+          where id = ${sessionRow.id}
+        `;
+
+        await tx`
+          insert into session_events (session_id, event_type, actor_role, payload)
+          values (
+            ${sessionRow.id},
+            'transfer_started',
+            'sender',
+            '{}'::jsonb
+          )
+        `;
+
+        const detail = await loadSessionDetailByCode(tx, code);
+
+        if (!detail) {
+          throw new Error("failed to load session after starting transfer");
+        }
+
+        return detail;
+      });
+    },
+
+    async completeTransfer(code, checksumSha256) {
+      return sql.begin(async (tx) => {
+        const sessionRows = await tx<SessionRow[]>`
+          select id, code, status, created_at, updated_at, expires_at
+          from transfer_sessions
+          where code = ${code}
+          for update
+        `;
+
+        const sessionRow = sessionRows[0];
+
+        if (!sessionRow) {
+          throw new SessionNotFoundError(code);
+        }
+
+        if (sessionRow.status !== "transferring") {
+          throw new SessionConflictError(
+            `transfer cannot complete from state ${sessionRow.status}`,
+          );
+        }
+
+        await tx`
+          update transfer_sessions
+          set status = 'completed', updated_at = now()
+          where id = ${sessionRow.id}
+        `;
+
+        await tx`
+          insert into session_events (session_id, event_type, actor_role, payload)
+          values (
+            ${sessionRow.id},
+            'transfer_completed',
+            'receiver',
+            ${JSON.stringify({ checksumSha256 })}::jsonb
+          )
+        `;
+
+        const detail = await loadSessionDetailByCode(tx, code);
+
+        if (!detail) {
+          throw new Error("failed to load session after completing transfer");
+        }
+
+        return detail;
+      });
+    },
+
+    async failTransfer(code, reason) {
+      return sql.begin(async (tx) => {
+        const sessionRows = await tx<SessionRow[]>`
+          select id, code, status, created_at, updated_at, expires_at
+          from transfer_sessions
+          where code = ${code}
+          for update
+        `;
+
+        const sessionRow = sessionRows[0];
+
+        if (!sessionRow) {
+          throw new SessionNotFoundError(code);
+        }
+
+        const failableStates = ["ready", "transferring"];
+
+        if (!failableStates.includes(sessionRow.status)) {
+          throw new SessionConflictError(
+            `transfer cannot fail from state ${sessionRow.status}`,
+          );
+        }
+
+        await tx`
+          update transfer_sessions
+          set status = 'failed', updated_at = now()
+          where id = ${sessionRow.id}
+        `;
+
+        await tx`
+          insert into session_events (session_id, event_type, actor_role, payload)
+          values (
+            ${sessionRow.id},
+            'transfer_failed',
+            null,
+            ${JSON.stringify({ reason })}::jsonb
+          )
+        `;
+
+        const detail = await loadSessionDetailByCode(tx, code);
+
+        if (!detail) {
+          throw new Error("failed to load session after failing transfer");
+        }
+
+        return detail;
+      });
+    },
+
+    async recordTransferProgress(code, bytesSent, totalBytes) {
+      const sessionRows = await sql<SessionRow[]>`
+        select id from transfer_sessions where code = ${code} limit 1
+      `;
+
+      const sessionRow = sessionRows[0];
+
+      if (!sessionRow) {
+        return;
+      }
+
+      await sql`
+        insert into session_events (session_id, event_type, actor_role, payload)
+        values (
+          ${sessionRow.id},
+          'transfer_progress',
+          'sender',
+          ${JSON.stringify({ bytesSent, totalBytes })}::jsonb
+        )
+      `;
     },
   };
 }
